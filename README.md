@@ -55,9 +55,14 @@
 
 ## 📦 安装与使用
 
-1. 安装浏览器脚本管理器扩展（如 Tampermonkey / Violentmonkey / ScriptCat）；
-2. 新建脚本并将 `LinuxDo-User-Tagger.user.js` 的源码复制粘贴保存；
-3. 打开 [LINUX DO (linux.do)](https://linux.do/) 任意帖子页面即可使用。
+### 方式 1：一键在线安装（推荐）
+点击下方链接即可通过浏览器脚本管理器（Tampermonkey / Violentmonkey / ScriptCat）直接一键安装：
+👉 **[点击直接安装 LinuxDo User Tagger](https://raw.githubusercontent.com/w012w012/LinuxDo-User-Tagger/main/LinuxDo-User-Tagger.user.js)**
+
+### 方式 2：手动复制安装
+1. 安装浏览器脚本管理器扩展；
+2. 新建脚本并将 [LinuxDo-User-Tagger.user.js](./LinuxDo-User-Tagger.user.js) 的源码复制粘贴保存；
+3. 打开 [LINUX DO (linux.do)](https://linux.do/) 任意帖子页面即可体验！
 
 ---
 

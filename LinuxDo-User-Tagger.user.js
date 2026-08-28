@@ -1,9 +1,13 @@
 // ==UserScript==
 // @name         LinuxDo User Tagger (Linux.do 用户打标与分类工具)
-// @namespace    https://github.com/linuxdo-user-tagger
+// @namespace    https://github.com/w012w012/LinuxDo-User-Tagger
 // @version      0.0.1
 // @description  为 Linux.do 论坛用户添加自定义标签与备注，支持【有营养】与【没营养】分类、超全语义 Emoji 智能字典、自主增删标签库、已有标签与备注展示、防冲动回帖警示、本地持久化与导入导出。
-// @author       LinuxDo User Tagger Team
+// @author       w012w012
+// @homepageURL  https://github.com/w012w012/LinuxDo-User-Tagger
+// @supportURL   https://github.com/w012w012/LinuxDo-User-Tagger/issues
+// @updateURL    https://raw.githubusercontent.com/w012w012/LinuxDo-User-Tagger/main/LinuxDo-User-Tagger.user.js
+// @downloadURL  https://raw.githubusercontent.com/w012w012/LinuxDo-User-Tagger/main/LinuxDo-User-Tagger.user.js
 // @match        https://linux.do/*
 // @grant        GM_getValue
 // @grant        GM_setValue
