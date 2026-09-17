@@ -1114,6 +1114,7 @@
             margin-left: 4px !important;
             vertical-align: middle !important;
             line-height: 1.3 !important;
+            text-decoration: none !important;
         }
 
         /* 帖子列表页标签外层容器 */
@@ -1123,6 +1124,7 @@
             gap: 3px !important;
             margin-left: 6px !important;
             vertical-align: middle !important;
+            text-decoration: none !important;
         }
 
         /* 个人主页标签栏样式扩展 */
@@ -2792,7 +2794,13 @@
             if (!doc || typeof doc.createElement !== 'function') return;
             tagWrap = doc.createElement('span');
             tagWrap.className = 'ld-topic-tag-wrap';
-            titleTarget.appendChild(tagWrap);
+            const isAnchor = (titleTarget.tagName && titleTarget.tagName.toUpperCase() === 'A') ||
+                (typeof titleTarget.matches === 'function' && titleTarget.matches('a'));
+            if (isAnchor && titleTarget.parentNode && typeof titleTarget.parentNode.insertBefore === 'function') {
+                titleTarget.parentNode.insertBefore(tagWrap, titleTarget.nextSibling);
+            } else {
+                titleTarget.appendChild(tagWrap);
+            }
         }
 
         const normalizedKey = author.toLowerCase();
@@ -3480,7 +3488,7 @@
     let debounceTimer = null;
     function mutationNeedsScan(records) {
         if (!Array.isArray(records)) return false;
-        const relevantSelector = '.topic-post, .topic-meta-data, .names, .user-card, #user-card, [data-user-card], .d-header, .topic-list-item, .topic-list, .user-profile-names, .user-main, .ld-header-btn-wrap';
+        const relevantSelector = '.topic-post, .topic-meta-data, .names, .user-card, #user-card, [data-user-card], .d-header, .topic-list-item, .topic-list, .user-profile-names, .user-main';
         return records.some(record => {
             if (!record) return false;
             const candidates = [record.target, ...(record.addedNodes || [])];

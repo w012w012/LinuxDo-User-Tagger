@@ -483,7 +483,6 @@ test('returns true for relevant selectors including new ones', () => {
     assert.ok(checkTarget('d-header'), 'should match .d-header');
     assert.ok(checkTarget('user-profile-names'), 'should match .user-profile-names');
     assert.ok(checkTarget('user-main'), 'should match .user-main');
-    assert.ok(checkTarget('ld-header-btn-wrap'), 'should match .ld-header-btn-wrap');
 });
 
 test('returns false for unrelated elements', () => {
