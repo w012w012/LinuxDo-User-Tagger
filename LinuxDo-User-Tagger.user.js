@@ -285,7 +285,9 @@
                 });
             });
             records.sort((a, b) => b.time - a.time);
-        } else if (tags.length > 0 || note !== '') {
+        }
+
+        if (records.length === 0 && (tags.length > 0 || note !== '')) {
             const legacyTime = updatedAt || Date.now();
             records = [{
                 id: `rec_${legacyTime}_legacy`,
@@ -511,7 +513,11 @@
         );
         const sourceUrl = mergedRecords[0]?.sourceUrl || normIncoming.sourceUrl || normExisting.sourceUrl || '';
         const sourceTitle = mergedRecords[0]?.sourceTitle || normIncoming.sourceTitle || normExisting.sourceTitle || '';
-        const note = normIncoming.note || normExisting.note || mergedRecords[0]?.note || '';
+        const note = (mergedRecords[0]?.note) || (
+            normIncoming.updatedAt >= normExisting.updatedAt
+                ? (normIncoming.note || normExisting.note || '')
+                : (normExisting.note || normIncoming.note || '')
+        );
         const username = normIncoming.username || normExisting.username;
 
         return {

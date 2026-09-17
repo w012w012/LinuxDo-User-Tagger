@@ -105,6 +105,39 @@ test('user without tags and note produces empty records array', () => {
     assert.strictEqual(user.records.length, 0, 'records should be empty');
 });
 
+test('user with empty records array but tags and note synthesizes legacy record', () => {
+    const rawUser = {
+        username: 'empty_rec_user',
+        records: [],
+        tags: [{ name: '🌱 始皇', category: 'good' }],
+        note: '创始人',
+        updatedAt: 1726550000000
+    };
+
+    const user = normalizeUserData('empty_rec_user', rawUser, DEFAULT_CATEGORIES);
+    assert(user !== null, 'user should not be null');
+    assert.strictEqual(user.records.length, 1, 'should synthesize legacy record when records array is empty');
+    assert.strictEqual(user.records[0].note, '创始人');
+    assert.strictEqual(user.records[0].tags[0].name, '🌱 始皇');
+    assert.strictEqual(user.records[0].time, 1726550000000);
+});
+
+test('user with invalid-only records but tags or note synthesizes legacy record', () => {
+    const rawUser = {
+        username: 'invalid_rec_user',
+        records: [null, 'invalid', 123],
+        tags: [],
+        note: '只有备注',
+        updatedAt: 1726560000000
+    };
+
+    const user = normalizeUserData('invalid_rec_user', rawUser, DEFAULT_CATEGORIES);
+    assert(user !== null, 'user should not be null');
+    assert.strictEqual(user.records.length, 1, 'should synthesize legacy record when records has only invalid items');
+    assert.strictEqual(user.records[0].note, '只有备注');
+    assert.strictEqual(user.records[0].time, 1726560000000);
+});
+
 console.log('\nSuite 2: Existing Records Handling and Validation in normalizeUserData');
 
 test('existing records are preserved, validated and sorted descending by time', () => {
@@ -407,6 +440,61 @@ test('merging user with records and legacy user without records directly via mer
     assert.strictEqual(mergedReverse.records.length, 2);
     assert.strictEqual(mergedReverse.records[0].id, 'rec_v2');
     assert.strictEqual(mergedReverse.records[1].time, 1000);
+});
+
+test('outer note prioritizes mergedRecords[0]?.note over snapshot note', () => {
+    const existing = {
+        username: 'note_prio_user',
+        updatedAt: 1000,
+        note: '旧快照备注',
+        records: [
+            {
+                id: 'rec_latest',
+                time: 2000,
+                sourceUrl: 'https://linux.do/1',
+                sourceTitle: 't1',
+                quote: '',
+                note: '最新记录备注',
+                tags: []
+            }
+        ]
+    };
+    const incoming = {
+        username: 'note_prio_user',
+        updatedAt: 1500,
+        note: '较新快照备注',
+        records: []
+    };
+
+    const merged = mergeUserData(existing, incoming, DEFAULT_CATEGORIES);
+    assert.strictEqual(merged.note, '最新记录备注');
+});
+
+test('when mergedRecords[0]?.note is empty, note selects from side with larger updatedAt', () => {
+    const existingNewer = {
+        username: 'time_prio_user',
+        updatedAt: 5000,
+        note: '更晚更新的现有备注',
+        records: [
+            { id: 'r1', time: 5000, sourceUrl: 'https://linux.do/1', sourceTitle: 't1', quote: '', note: '', tags: [{ name: 't1', category: 'good' }] }
+        ]
+    };
+    const incomingOlder = {
+        username: 'time_prio_user',
+        updatedAt: 3000,
+        note: '较早更新的导入备注',
+        records: [
+            { id: 'r2', time: 3000, sourceUrl: 'https://linux.do/2', sourceTitle: 't2', quote: '', note: '', tags: [{ name: 't2', category: 'good' }] }
+        ]
+    };
+
+    // existingNewer (updatedAt: 5000) vs incomingOlder (updatedAt: 3000) -> existingNewer.note wins
+    const mergedExistingWins = mergeUserData(existingNewer, incomingOlder, DEFAULT_CATEGORIES);
+    assert.strictEqual(mergedExistingWins.note, '更晚更新的现有备注');
+
+    // reversed: incoming has larger updatedAt (5000 >= 3000) -> incoming wins
+    const mergedIncomingWins = mergeUserData(incomingOlder, existingNewer, DEFAULT_CATEGORIES);
+    assert.strictEqual(mergedIncomingWins.note, '更晚更新的现有备注');
 });
 
 console.log('\nSuite 4: Schema Validation in validateImportShape');
