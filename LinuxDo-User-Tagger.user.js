@@ -449,6 +449,12 @@
         }
 
         load() {
+            if (typeof GM_getValue !== 'function') {
+                return {
+                    users: Object.create(null),
+                    categories: normalizeCategories(DEFAULT_CATEGORIES)
+                };
+            }
             const raw = GM_getValue(STORAGE_KEY, null);
             if (!raw) {
                 const initData = {
@@ -473,9 +479,11 @@
         }
 
         save(data = this.cache, syncToCloud = true) {
-            GM_setValue(STORAGE_KEY, JSON.stringify(data));
+            if (typeof GM_setValue === 'function') {
+                GM_setValue(STORAGE_KEY, JSON.stringify(data));
+            }
             this.cache = data;
-            if (syncToCloud && GistSync && typeof GistSync.triggerAutoSync === 'function') {
+            if (syncToCloud && typeof GistSync !== 'undefined' && GistSync && typeof GistSync.triggerAutoSync === 'function') {
                 GistSync.triggerAutoSync();
             }
         }
@@ -1246,7 +1254,9 @@
         }
     `;
 
-    GM_addStyle(CSS_STYLES);
+    if (typeof GM_addStyle === 'function') {
+        GM_addStyle(CSS_STYLES);
+    }
 
     // ==========================================
     // 5. 单例 Tooltip 模块 (安全转义)
@@ -1620,12 +1630,14 @@
     };
 
     // 全局 Esc 键快速关闭弹窗
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            if (popover.popEl) popover.close();
-            tooltip.hide();
-        }
-    });
+    if (typeof document !== 'undefined') {
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (popover.popEl) popover.close();
+                tooltip.hide();
+            }
+        });
+    }
 
     // ==========================================
     // 7. 防冲动回帖警示模块 (Anti-Impulse Warning)
@@ -1653,29 +1665,31 @@
     }
 
     // 监听点击“回复”按钮
-    document.body.addEventListener('click', (e) => {
-        const replyBtn = e.target.closest('button.reply, button.reply-to-post, .post-controls .reply, .reply-action');
-        if (!replyBtn) return;
+    if (typeof document !== 'undefined' && document.body) {
+        document.body.addEventListener('click', (e) => {
+            const replyBtn = e.target.closest('button.reply, button.reply-to-post, .post-controls .reply, .reply-action');
+            if (!replyBtn) return;
 
-        const postArticle = replyBtn.closest('.topic-post, article.boxed, article');
-        if (!postArticle) return;
+            const postArticle = replyBtn.closest('.topic-post, article.boxed, article');
+            if (!postArticle) return;
 
-        // 严格限定在帖头 meta 信息中提取作者，绝不回退至包含 .cooked 正文的整个帖子容器
-        const namesTarget = postArticle.querySelector('.topic-meta-data .names') || postArticle.querySelector('.topic-meta-data');
-        if (!namesTarget) return;
+            // 严格限定在帖头 meta 信息中提取作者，绝不回退至包含 .cooked 正文的整个帖子容器
+            const namesTarget = postArticle.querySelector('.topic-meta-data .names') || postArticle.querySelector('.topic-meta-data');
+            if (!namesTarget) return;
 
-        const username = extractUsername(namesTarget);
-        if (!username) return;
+            const username = extractUsername(namesTarget);
+            if (!username) return;
 
-        const userData = storage.getUser(username);
-        if (!userData || !userData.tags || userData.tags.length === 0) return;
+            const userData = storage.getUser(username);
+            if (!userData || !userData.tags || userData.tags.length === 0) return;
 
-        const badTags = userData.tags.filter(t => t.category === 'bad');
-        if (badTags.length > 0) {
-            const badNames = badTags.map(t => t.name.replace(/^[^\u4e00-\u9fa5a-zA-Z0-9]+/, ''));
-            triggerAntiImpulseWarning(replyBtn, badNames);
-        }
-    }, true);
+            const badTags = userData.tags.filter(t => t.category === 'bad');
+            if (badTags.length > 0) {
+                const badNames = badTags.map(t => t.name.replace(/^[^\u4e00-\u9fa5a-zA-Z0-9]+/, ''));
+                triggerAntiImpulseWarning(replyBtn, badNames);
+            }
+        }, true);
+    }
 
     // ==========================================
     // 8. 核心渲染器 (Discourse DOM 注入与提取)
@@ -2097,20 +2111,34 @@
         });
     }
 
-    const observer = new MutationObserver((records) => {
-        if (!mutationNeedsScan(records)) return;
-        if (debounceTimer) cancelAnimationFrame(debounceTimer);
-        debounceTimer = requestAnimationFrame(() => {
-            scanAndInject();
+    if (typeof MutationObserver !== 'undefined' && typeof document !== 'undefined' && document.body) {
+        const observer = new MutationObserver((records) => {
+            if (!mutationNeedsScan(records)) return;
+            if (debounceTimer) cancelAnimationFrame(debounceTimer);
+            debounceTimer = requestAnimationFrame(() => {
+                scanAndInject();
+            });
         });
-    });
 
-    observer.observe(document.body, {
-        childList: true,
-        subtree: true
-    });
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
 
-    scanAndInject();
+        scanAndInject();
 
-    console.log('[LinuxDo User Tagger] v0.0.1 运行就绪！');
+        console.log('[LinuxDo User Tagger] v0.0.1 运行就绪！');
+    }
+
+    if (typeof module !== 'undefined' && module.exports) {
+        module.exports = {
+            normalizeUserData,
+            mergeUserData,
+            validateImportShape,
+            smartFormatTagName,
+            normalizeCategories,
+            normalizeUsers,
+            DEFAULT_CATEGORIES
+        };
+    }
 })();
