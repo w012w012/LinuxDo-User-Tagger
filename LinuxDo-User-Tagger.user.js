@@ -624,6 +624,79 @@
         return result;
     }
 
+    function formatDateTime(timestamp) {
+        if (!timestamp) return '';
+        const num = Number(timestamp);
+        if (!num || isNaN(num) || num <= 0) return '';
+        const date = new Date(num);
+        if (isNaN(date.getTime())) return '';
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        const h = String(date.getHours()).padStart(2, '0');
+        const min = String(date.getMinutes()).padStart(2, '0');
+        return `${y}-${m}-${d} ${h}:${min}`;
+    }
+
+    function filterUsers(users, { kw = '', categoryFilter = 'all' } = {}) {
+        const list = Array.isArray(users) ? users : Object.values(users || {});
+        const normalizedKw = String(kw || '').trim().toLowerCase();
+
+        return list.filter(u => {
+            if (!u || typeof u !== 'object') return false;
+
+            // Category filter
+            if (categoryFilter === 'good') {
+                const hasGood = Array.isArray(u.tags) && u.tags.some(t => t && t.category === 'good');
+                if (!hasGood) return false;
+            } else if (categoryFilter === 'bad') {
+                const hasBad = Array.isArray(u.tags) && u.tags.some(t => t && t.category === 'bad');
+                if (!hasBad) return false;
+            }
+
+            // Keyword filter
+            if (!normalizedKw) return true;
+
+            const uNameMatch = String(u.username || '').toLowerCase().includes(normalizedKw);
+            const tagMatch = Array.isArray(u.tags) && u.tags.some(t => t && String(t.name || '').toLowerCase().includes(normalizedKw));
+            const noteMatch = String(u.note || '').toLowerCase().includes(normalizedKw);
+            const quoteMatch = Array.isArray(u.records) && u.records.some(r => {
+                if (!r) return false;
+                const qMatch = String(r.quote || '').toLowerCase().includes(normalizedKw);
+                const nMatch = String(r.note || '').toLowerCase().includes(normalizedKw);
+                const tMatch = String(r.sourceTitle || '').toLowerCase().includes(normalizedKw);
+                return qMatch || nMatch || tMatch;
+            });
+
+            return uNameMatch || tagMatch || noteMatch || quoteMatch;
+        });
+    }
+
+    function removeRecordFromUser(user, recordId) {
+        if (!user || typeof user !== 'object') return null;
+        const cloned = JSON.parse(JSON.stringify(user));
+        const records = Array.isArray(cloned.records) ? cloned.records : [];
+        const newRecords = records.filter(r => r && r.id !== recordId);
+        cloned.records = newRecords;
+
+        if (newRecords.length > 0) {
+            cloned.updatedAt = newRecords[0].time || cloned.updatedAt || Date.now();
+            if (newRecords[0].note) {
+                cloned.note = newRecords[0].note;
+            }
+        }
+
+        const hasTags = Array.isArray(cloned.tags) && cloned.tags.length > 0;
+        const hasNote = typeof cloned.note === 'string' && cloned.note.trim().length > 0;
+        const hasRecords = cloned.records.length > 0;
+
+        if (!hasTags && !hasNote && !hasRecords) {
+            return null;
+        }
+
+        return cloned;
+    }
+
     function startsWithEmoji(str) {
         if (!str) return false;
         const emojiRegex = /^(\p{Extended_Pictographic}|\p{Emoji_Presentation})/u;
@@ -1057,7 +1130,7 @@
         /* 备注 Hover Tooltip */
         .ld-tooltip {
             position: fixed;
-            z-index: 100010;
+            z-index: 100030;
             max-width: 320px;
             padding: 8px 12px;
             background: #1f2937;
@@ -1083,13 +1156,13 @@
             left: 0;
             width: 100vw;
             height: 100vh;
-            z-index: 100000;
+            z-index: 100010;
             background: rgba(0, 0, 0, 0.35);
             backdrop-filter: blur(1.5px);
         }
         .ld-popover {
             position: fixed;
-            z-index: 100005;
+            z-index: 100015;
             width: 390px;
             max-width: calc(100vw - 20px);
             max-height: calc(100vh - 20px);
@@ -1398,13 +1471,16 @@
         }
 
         /* 全局管理 Modal */
+        .ld-manager-mask {
+            z-index: 100000;
+        }
         .ld-modal {
             position: fixed;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            width: 620px;
-            max-width: 92vw;
+            width: 640px;
+            max-width: 94vw;
             max-height: 85vh;
             background: var(--secondary, #ffffff);
             color: var(--primary, #222222);
@@ -1420,6 +1496,228 @@
             overflow-y: auto;
             flex: 1;
         }
+
+        /* 管理中心工具栏与分类筛选按钮 */
+        .ld-manager-toolbar {
+            padding: 10px 16px;
+            background: var(--primary-very-low, #f9f9f9);
+            border-bottom: 1px solid var(--primary-low, #eee);
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+        }
+        .ld-toolbar-search-group {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+            flex: 1;
+        }
+        .ld-filter-chips {
+            display: inline-flex;
+            gap: 5px;
+            align-items: center;
+        }
+        .ld-filter-chip {
+            padding: 3px 9px;
+            border-radius: 12px;
+            font-size: 11.5px;
+            font-weight: 500;
+            cursor: pointer;
+            border: 1px solid var(--primary-low, #d1d5db);
+            background: var(--secondary, #ffffff);
+            color: var(--primary-medium, #555555);
+            transition: all 0.15s ease;
+            user-select: none;
+            line-height: 1.2;
+        }
+        .ld-filter-chip:hover {
+            background: var(--primary-very-low, #f3f4f6);
+            border-color: var(--tertiary, #0088cc);
+        }
+        .ld-filter-chip.active {
+            background: var(--tertiary, #0088cc);
+            color: #ffffff;
+            border-color: var(--tertiary, #0088cc);
+            font-weight: 600;
+        }
+
+        /* 富信息战绩卡片 Rich User Cards */
+        .ld-user-card-item {
+            border: 1px solid var(--primary-low, #e5e7eb);
+            border-radius: 8px;
+            margin-bottom: 12px;
+            padding: 12px;
+            background: var(--secondary, #ffffff);
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            transition: box-shadow 0.2s ease, border-color 0.2s ease;
+        }
+        .ld-user-card-item:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            border-color: var(--primary-medium-low, #d1d5db);
+        }
+        .ld-user-card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        .ld-user-card-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            flex: 1;
+        }
+        .ld-user-avatar-placeholder {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            background: var(--tertiary-low, #e0f2fe);
+            color: var(--tertiary, #0284c7);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 12px;
+            flex-shrink: 0;
+            user-select: none;
+        }
+        .ld-user-name-link {
+            font-weight: 700;
+            font-size: 13.5px;
+            color: var(--primary, #1f2937);
+            text-decoration: none;
+            transition: color 0.15s ease;
+        }
+        .ld-user-name-link:hover {
+            color: var(--tertiary, #0088cc);
+            text-decoration: underline;
+        }
+        .ld-user-card-actions {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        .ld-user-card-body {
+            margin-top: 8px;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        .ld-record-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--primary-medium, #888888);
+            font-size: 11px;
+            flex-wrap: wrap;
+        }
+        .ld-post-link {
+            color: var(--tertiary, #0088cc);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+            max-width: 320px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .ld-post-link:hover {
+            text-decoration: underline;
+        }
+        .ld-record-quote {
+            background: var(--primary-very-low, #f8f9fa);
+            border-left: 3px solid var(--tertiary, #0088cc);
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-style: italic;
+            color: var(--primary, #374151);
+            margin-top: 6px;
+            font-size: 11.5px;
+            word-break: break-word;
+        }
+        .ld-record-note {
+            margin-top: 4px;
+            color: var(--primary, #444444);
+            font-size: 12px;
+            word-break: break-word;
+        }
+
+        /* 历史战绩时间线折叠面板 */
+        .ld-timeline-toggle {
+            margin-top: 8px;
+            background: none;
+            border: none;
+            color: var(--tertiary, #0088cc);
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+            padding: 2px 0;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            outline: none;
+        }
+        .ld-timeline-toggle:hover {
+            text-decoration: underline;
+        }
+        .ld-timeline-container {
+            display: none;
+            margin-top: 8px;
+            padding-left: 14px;
+            border-left: 2px solid var(--primary-low, #e5e7eb);
+            position: relative;
+        }
+        .ld-timeline-container.open {
+            display: block;
+        }
+        .ld-timeline-item {
+            position: relative;
+            padding: 6px 0 6px 10px;
+            font-size: 11.5px;
+            border-bottom: 1px dashed var(--primary-low, #f3f4f6);
+        }
+        .ld-timeline-item:last-child {
+            border-bottom: none;
+        }
+        .ld-timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -19px;
+            top: 11px;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--tertiary, #0088cc);
+            border: 2px solid var(--secondary, #ffffff);
+        }
+        .ld-timeline-item-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+        }
+        .ld-btn-del-record {
+            background: none;
+            border: none;
+            color: var(--danger, #e74c3c);
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+            padding: 0 4px;
+            border-radius: 3px;
+            opacity: 0.6;
+            transition: all 0.15s ease;
+        }
+        .ld-btn-del-record:hover {
+            opacity: 1;
+            background: rgba(231, 76, 60, 0.1);
+        }
+
         .ld-user-list-item {
             display: flex;
             align-items: center;
@@ -2194,12 +2492,18 @@
                 }
                 this.close();
                 renderAllTags();
+                if (typeof activeManagerRefresh === 'function') {
+                    activeManagerRefresh();
+                }
             });
 
             this.popEl.querySelector('#ld-btn-delete-all').addEventListener('click', () => {
                 storage.setUser(this.currentUser, null);
                 this.close();
                 renderAllTags();
+                if (typeof activeManagerRefresh === 'function') {
+                    activeManagerRefresh();
+                }
             });
         },
 
@@ -2434,6 +2738,7 @@
     // 9. 管理后台与导入导出 Modal
     // ==========================================
     let activeManagerClose = null;
+    let activeManagerRefresh = null;
 
     function openManagerModal() {
         if (popover && typeof popover.close === 'function') popover.close();
@@ -2446,6 +2751,7 @@
             modal.remove();
             document.removeEventListener('keydown', closeOnEscape);
             if (activeManagerClose === closeManager) activeManagerClose = null;
+            if (activeManagerRefresh) activeManagerRefresh = null;
         }
 
         function closeOnEscape(event) {
@@ -2505,9 +2811,16 @@
             <!-- 📊 Bento 统计看板 -->
             <div id="ld-dashboard-container" style="padding: 0 16px;"></div>
 
-            <div style="padding: 10px 16px; background: var(--primary-very-low, #f9f9f9); border-bottom: 1px solid var(--primary-low, #eee); display: flex; gap: 8px; align-items: center; justify-content: space-between;">
-                <input type="text" id="ld-search-user" class="ld-input" style="max-width: 240px;" placeholder="🔍 搜索用户名或标签..." />
-                <div>
+            <div class="ld-manager-toolbar">
+                <div class="ld-toolbar-search-group">
+                    <input type="text" id="ld-search-user" class="ld-input" style="max-width: 220px;" placeholder="🔍 搜索用户名、标签或言论..." />
+                    <div class="ld-filter-chips" id="ld-category-filter-chips">
+                        <button type="button" class="ld-filter-chip active" data-category="all">全部 (0)</button>
+                        <button type="button" class="ld-filter-chip" data-category="good">🌱 有营养 (0)</button>
+                        <button type="button" class="ld-filter-chip" data-category="bad">🚨 没营养 (0)</button>
+                    </div>
+                </div>
+                <div class="ld-toolbar-actions">
                     <button class="ld-btn ld-btn-secondary" id="ld-btn-export">📥 导出备份 (JSON)</button>
                     <button class="ld-btn ld-btn-secondary" id="ld-btn-import">📤 导入数据</button>
                     <input type="file" id="ld-file-input" style="display: none;" accept=".json" />
@@ -2537,7 +2850,7 @@
 
             const topTagsHtml = stats.topTags.length > 0
                 ? stats.topTags.map(t => `
-                    <span class="ld-stat-tag-chip" style="color:${escapeHtml(t.color || 'inherit')}; background:${escapeHtml(t.bg || 'var(--primary-very-low, #eee)')}; border-color:${escapeHtml(t.border || 'transparent')}">
+                    <span class="ld-stat-tag-chip" title="${escapeHtml(t.name)} (${t.count})" style="color:${sanitizeColor(t.color, 'inherit')}; background:${sanitizeColor(t.bg, 'var(--primary-very-low, #eee)')}; border-color:${sanitizeColor(t.border, 'transparent')}">
                         ${escapeHtml(t.name)} <span class="ld-stat-tag-count">(${t.count})</span>
                     </span>
                 `).join('')
@@ -2657,7 +2970,7 @@
                     statusText.innerHTML = `🕒 上次同步: <strong>刚刚</strong> (拉取成功)`;
                     alert(`🎉 成功从云端拉取并合并了 ${res.count} 位用户的标签数据！`);
                     renderDashboard();
-                    renderList(searchInput.value);
+                    renderList();
                     renderAllTags();
                 } else {
                     statusText.innerText = `拉取失败: ${res.error}`;
@@ -2666,15 +2979,39 @@
             });
         });
 
-        function renderList(filterText = '') {
+        let currentCategoryFilter = 'all';
+        const filterChipsContainer = modal.querySelector('#ld-category-filter-chips');
+        if (filterChipsContainer) {
+            filterChipsContainer.addEventListener('click', (e) => {
+                const chip = e.target.closest('.ld-filter-chip');
+                if (!chip) return;
+                const cat = chip.getAttribute('data-category') || 'all';
+                currentCategoryFilter = cat;
+                filterChipsContainer.querySelectorAll('.ld-filter-chip').forEach(c => {
+                    c.classList.toggle('active', c === chip);
+                });
+                renderList();
+            });
+        }
+
+        function renderList() {
             listContainer.innerHTML = '';
-            const userList = Object.values(storage.getAllUsers());
-            const filtered = userList.filter(u => {
-                const kw = filterText.trim().toLowerCase();
-                const uNameMatch = String(u.username || '').toLowerCase().includes(kw);
-                const tagMatch = (u.tags || []).some(t => String(t.name || '').toLowerCase().includes(kw));
-                const noteMatch = String(u.note || '').toLowerCase().includes(kw);
-                return uNameMatch || tagMatch || noteMatch;
+            const allUsers = Object.values(storage.getAllUsers());
+
+            const allCount = allUsers.length;
+            const goodCount = allUsers.filter(u => Array.isArray(u.tags) && u.tags.some(t => t && t.category === 'good')).length;
+            const badCount = allUsers.filter(u => Array.isArray(u.tags) && u.tags.some(t => t && t.category === 'bad')).length;
+
+            const chipAll = modal.querySelector('.ld-filter-chip[data-category="all"]');
+            const chipGood = modal.querySelector('.ld-filter-chip[data-category="good"]');
+            const chipBad = modal.querySelector('.ld-filter-chip[data-category="bad"]');
+            if (chipAll) chipAll.textContent = `全部 (${allCount})`;
+            if (chipGood) chipGood.textContent = `🌱 有营养 (${goodCount})`;
+            if (chipBad) chipBad.textContent = `🚨 没营养 (${badCount})`;
+
+            const filtered = filterUsers(allUsers, {
+                kw: searchInput ? searchInput.value : '',
+                categoryFilter: currentCategoryFilter
             });
 
             if (filtered.length === 0) {
@@ -2684,27 +3021,130 @@
 
             filtered.forEach(u => {
                 const item = document.createElement('div');
-                item.className = 'ld-user-list-item';
-                item.innerHTML = `
-                    <div>
-                        <div style="font-weight: bold; font-size: 13px;">@${escapeHtml(u.username)}</div>
-                        <div style="display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap;">
-                            ${(u.tags || []).map(t => `<span class="ld-tag-badge" style="color:${escapeHtml(t.color)}; background:${escapeHtml(t.bg)}; border-color:${escapeHtml(t.border)}">${escapeHtml(t.name)}</span>`).join('')}
-                        </div>
-                        ${u.note ? `<div style="font-size: 11px; color: var(--primary-medium, #888); margin-top: 3px;">💬 ${escapeHtml(u.note)}</div>` : ''}
+                item.className = 'ld-user-card-item';
+
+                const records = Array.isArray(u.records) ? u.records : [];
+                const latestRecord = records[0] || null;
+                const timeToDisplay = (latestRecord && latestRecord.time) || u.updatedAt;
+                const timeFormatted = formatDateTime(timeToDisplay);
+                const sourceUrl = (latestRecord && latestRecord.sourceUrl) || u.sourceUrl;
+                const sourceTitle = (latestRecord && latestRecord.sourceTitle) || u.sourceTitle || '关联帖子';
+                const quoteText = (latestRecord && latestRecord.quote) ? latestRecord.quote.trim() : '';
+                const noteText = (latestRecord && latestRecord.note) ? latestRecord.note.trim() : (u.note ? u.note.trim() : '');
+
+                const tagsHtml = (u.tags || []).map(t => `
+                    <span class="ld-tag-badge" style="color:${sanitizeColor(t.color, 'inherit')}; background:${sanitizeColor(t.bg, 'var(--primary-very-low, #eee)')}; border-color:${sanitizeColor(t.border, 'transparent')}">
+                        ${escapeHtml(t.name)}
+                    </span>
+                `).join('');
+
+                const hasOlderRecords = records.length >= 2;
+                const olderRecordsHtml = hasOlderRecords ? `
+                    <button type="button" class="ld-timeline-toggle">▼ 查看历史战绩 (共 ${records.length} 条)</button>
+                    <div class="ld-timeline-container">
+                        ${records.slice(1).map(r => {
+                            const rTimeStr = formatDateTime(r.time);
+                            const rTagsHtml = (r.tags && r.tags.length > 0) ? `
+                                <div style="display: flex; gap: 3px; margin-top: 3px; flex-wrap: wrap;">
+                                    ${r.tags.map(t => `<span class="ld-tag-badge" style="font-size: 10px; padding: 1px 5px; color:${sanitizeColor(t.color, 'inherit')}; background:${sanitizeColor(t.bg, 'var(--primary-very-low, #eee)')}; border-color:${sanitizeColor(t.border, 'transparent')}">${escapeHtml(t.name)}</span>`).join('')}
+                                </div>
+                            ` : '';
+                            return `
+                                <div class="ld-timeline-item" data-record-id="${escapeHtml(r.id)}">
+                                    <div class="ld-timeline-item-header">
+                                        <div class="ld-record-meta">
+                                            ${r.sourceUrl ? `<a href="${escapeHtml(r.sourceUrl)}" target="_blank" rel="noopener noreferrer" class="ld-post-link">🔗 ${escapeHtml(r.sourceTitle || '关联帖子')}</a>` : ''}
+                                            ${rTimeStr ? `<span>🕒 ${escapeHtml(rTimeStr)}</span>` : ''}
+                                        </div>
+                                        <button type="button" class="ld-btn-del-record" title="删除此条历史记录" data-record-id="${escapeHtml(r.id)}">&times;</button>
+                                    </div>
+                                    ${rTagsHtml}
+                                    ${r.quote ? `<div class="ld-record-quote">“${escapeHtml(r.quote)}”</div>` : ''}
+                                    ${r.note ? `<div class="ld-record-note">💬 备注: ${escapeHtml(r.note)}</div>` : ''}
+                                </div>
+                            `;
+                        }).join('')}
                     </div>
-                    <div>
-                        <button class="ld-btn ld-btn-danger ld-btn-del-user" style="padding: 2px 8px; font-size: 11px;">删除</button>
+                ` : '';
+
+                item.innerHTML = `
+                    <div class="ld-user-card-header">
+                        <div class="ld-user-card-title">
+                            <div class="ld-user-avatar-placeholder">${escapeHtml((u.username || '?')[0].toUpperCase())}</div>
+                            <a href="/u/${encodeURIComponent(u.username)}" target="_blank" class="ld-user-name-link">@${escapeHtml(u.username)}</a>
+                            <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                                ${tagsHtml}
+                            </div>
+                        </div>
+                        <div class="ld-user-card-actions">
+                            <button type="button" class="ld-btn ld-btn-secondary ld-btn-edit-user" style="padding: 2px 8px; font-size: 11px;">✏️ 编辑</button>
+                            <button type="button" class="ld-btn ld-btn-danger ld-btn-del-user" style="padding: 2px 8px; font-size: 11px;">🗑️ 删除</button>
+                        </div>
+                    </div>
+                    <div class="ld-user-card-body">
+                        ${(sourceUrl || timeFormatted) ? `
+                            <div class="ld-record-meta">
+                                ${sourceUrl ? `<a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" class="ld-post-link">🔗 ${escapeHtml(sourceTitle)}</a>` : ''}
+                                ${timeFormatted ? `<span>🕒 ${escapeHtml(timeFormatted)}</span>` : ''}
+                            </div>
+                        ` : ''}
+                        ${quoteText ? `<div class="ld-record-quote">“${escapeHtml(quoteText)}”</div>` : ''}
+                        ${noteText ? `<div class="ld-record-note">💬 备注: ${escapeHtml(noteText)}</div>` : ''}
+                        ${olderRecordsHtml}
                     </div>
                 `;
 
-                item.querySelector('.ld-btn-del-user').addEventListener('click', () => {
-                    if (confirm(`确定删除针对 @${u.username} 的所有标签与备注吗？`)) {
-                        storage.setUser(u.username, null);
-                        renderDashboard();
-                        renderList(searchInput.value);
-                        renderAllTags();
-                    }
+                // 绑定编辑事件
+                const editBtn = item.querySelector('.ld-btn-edit-user');
+                if (editBtn) {
+                    editBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        popover.open(u.username, editBtn);
+                    });
+                }
+
+                // 绑定删除整个用户事件
+                const delUserBtn = item.querySelector('.ld-btn-del-user');
+                if (delUserBtn) {
+                    delUserBtn.addEventListener('click', () => {
+                        if (confirm(`确定删除针对 @${u.username} 的所有标签与备注吗？`)) {
+                            storage.setUser(u.username, null);
+                            renderDashboard();
+                            renderList();
+                            renderAllTags();
+                        }
+                    });
+                }
+
+                // 绑定展开/折叠历史时间轴
+                const toggleBtn = item.querySelector('.ld-timeline-toggle');
+                const timelineContainer = item.querySelector('.ld-timeline-container');
+                if (toggleBtn && timelineContainer) {
+                    toggleBtn.addEventListener('click', () => {
+                        const isOpen = timelineContainer.classList.toggle('open');
+                        toggleBtn.innerHTML = isOpen
+                            ? `▲ 收起历史战绩`
+                            : `▼ 查看历史战绩 (共 ${records.length} 条)`;
+                    });
+                }
+
+                // 绑定删除单条历史记录
+                const delRecordBtns = item.querySelectorAll('.ld-btn-del-record');
+                delRecordBtns.forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const recordId = btn.getAttribute('data-record-id');
+                        if (!recordId) return;
+                        if (confirm('确定删除此条历史记录吗？')) {
+                            const currentUser = storage.getUser(u.username);
+                            if (!currentUser) return;
+                            const updated = removeRecordFromUser(currentUser, recordId);
+                            storage.setUser(u.username, updated);
+                            renderDashboard();
+                            renderList();
+                            renderAllTags();
+                        }
+                    });
                 });
 
                 listContainer.appendChild(item);
@@ -2714,7 +3154,7 @@
         renderDashboard();
         renderList();
 
-        searchInput.addEventListener('input', (e) => renderList(e.target.value));
+        searchInput.addEventListener('input', () => renderList());
         modal.querySelector('#ld-modal-close').addEventListener('click', closeManager);
 
         // 导出功能 (改用 Blob 避免 URL 长度超限)
@@ -2755,6 +3195,10 @@
         });
         document.addEventListener('keydown', closeOnEscape);
         activeManagerClose = closeManager;
+        activeManagerRefresh = () => {
+            renderDashboard();
+            renderList();
+        };
     }
 
     // ==========================================
@@ -2814,7 +3258,10 @@
             normalizeUsers,
             DEFAULT_CATEGORIES,
             extractPostContext,
-            calculateDashboardStats
+            calculateDashboardStats,
+            formatDateTime,
+            filterUsers,
+            removeRecordFromUser
         };
     }
 })();
