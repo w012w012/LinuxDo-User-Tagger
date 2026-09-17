@@ -223,23 +223,19 @@
         return categories.length > 0 ? categories : cloneData(DEFAULT_CATEGORIES);
     }
 
-    function normalizeUserData(username, rawUser, categories) {
-        if (!isPlainObject(rawUser)) return null;
-        const displayName = normalizeUsername(rawUser.username || username);
-        if (!displayName) return null;
-
+    function normalizeUserTags(rawTags, categories) {
         const tags = [];
         const tagKeys = new Set();
-        (Array.isArray(rawUser.tags) ? rawUser.tags : []).forEach(rawTag => {
+        (Array.isArray(rawTags) ? rawTags : []).forEach(rawTag => {
             if (!isPlainObject(rawTag)) return;
             const name = normalizeText(rawTag.name, 100);
             if (!name) return;
             const requestedCategory = normalizeCategoryId(rawTag.category);
-            const knownCategory = requestedCategory && categories.some(cat => cat.id === requestedCategory)
+            const knownCategory = requestedCategory && (categories || []).some(cat => cat.id === requestedCategory)
                 ? requestedCategory
                 : null;
-            const category = knownCategory || inferTagCategory(categories, name);
-            const preset = findPresetTag(categories, category, name);
+            const category = knownCategory || inferTagCategory(categories || [], name);
+            const preset = findPresetTag(categories || [], category, name);
             const fallback = preset || { color: '#333333', bg: '#eeeeee', border: '#cccccc' };
             const tag = {
                 name,
@@ -254,15 +250,76 @@
                 tags.push(tag);
             }
         });
+        return tags;
+    }
 
-        const updatedAt = Number(rawUser.updatedAt);
+    function normalizeUserData(username, rawUser, categories) {
+        if (!isPlainObject(rawUser)) return null;
+        const displayName = normalizeUsername(rawUser.username || username);
+        if (!displayName) return null;
+
+        const tags = normalizeUserTags(rawUser.tags, categories);
+        const note = normalizeText(rawUser.note, 1000);
+        const sourceUrl = normalizeText(rawUser.sourceUrl, 2048);
+        const sourceTitle = normalizeText(rawUser.sourceTitle, 200);
+        const rawUpdatedAt = Number(rawUser.updatedAt);
+        const updatedAt = Number.isFinite(rawUpdatedAt) && rawUpdatedAt > 0 ? rawUpdatedAt : 0;
+
+        let records = [];
+        if (Array.isArray(rawUser.records)) {
+            rawUser.records.forEach(record => {
+                if (!isPlainObject(record)) return;
+                const timeNum = Number(record.time);
+                const time = Number.isFinite(timeNum) && timeNum > 0 ? timeNum : 0;
+                const id = typeof record.id === 'string' && record.id.trim()
+                    ? record.id.trim()
+                    : `rec_${time || Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+                records.push({
+                    id,
+                    time,
+                    sourceUrl: normalizeText(record.sourceUrl, 2048),
+                    sourceTitle: normalizeText(record.sourceTitle, 200),
+                    quote: normalizeText(record.quote, 200),
+                    note: normalizeText(record.note, 1000),
+                    tags: normalizeUserTags(record.tags, categories)
+                });
+            });
+            records.sort((a, b) => b.time - a.time);
+        } else if (tags.length > 0 || note !== '') {
+            const legacyTime = updatedAt || Date.now();
+            records = [{
+                id: `rec_${legacyTime}_legacy`,
+                time: legacyTime,
+                sourceUrl: sourceUrl || '',
+                sourceTitle: sourceTitle || '',
+                quote: '',
+                note: note || '',
+                tags: cloneData(tags)
+            }];
+        }
+
+        const outerUpdatedAt = records.length > 0
+            ? Math.max(updatedAt, records[0]?.time || 0)
+            : updatedAt;
+        const outerSourceUrl = records.length > 0
+            ? (records[0]?.sourceUrl || sourceUrl)
+            : sourceUrl;
+        const outerSourceTitle = records.length > 0
+            ? (records[0]?.sourceTitle || sourceTitle)
+            : sourceTitle;
+        const outerNote = note || (records.length > 0 ? records[0]?.note || '' : '');
+        const outerTags = tags.length > 0
+            ? tags
+            : (records.length > 0 ? cloneData(records[0]?.tags || []) : []);
+
         return {
             username: displayName,
-            tags,
-            note: normalizeText(rawUser.note, 1000),
-            sourceUrl: normalizeText(rawUser.sourceUrl, 2048),
-            sourceTitle: normalizeText(rawUser.sourceTitle, 200),
-            updatedAt: Number.isFinite(updatedAt) && updatedAt > 0 ? updatedAt : 0
+            tags: outerTags,
+            note: outerNote,
+            sourceUrl: outerSourceUrl,
+            sourceTitle: outerSourceTitle,
+            updatedAt: outerUpdatedAt,
+            records
         };
     }
 
@@ -321,6 +378,47 @@
                         throw new Error(`用户 ${key} 的标签分类无效`);
                     }
                 });
+                if (user.records !== undefined) {
+                    if (!Array.isArray(user.records)) {
+                        throw new Error(`用户 ${key} 的 records 必须是数组`);
+                    }
+                    user.records.forEach((record, recIdx) => {
+                        if (!isPlainObject(record)) {
+                            throw new Error(`用户 ${key} 的 records[${recIdx}] 无效，必须是对象`);
+                        }
+                        if (record.id !== undefined && typeof record.id !== 'string') {
+                            throw new Error(`用户 ${key} 的 records[${recIdx}] id 无效`);
+                        }
+                        if (record.time !== undefined && typeof record.time !== 'number') {
+                            throw new Error(`用户 ${key} 的 records[${recIdx}] time 无效`);
+                        }
+                        if (record.sourceUrl !== undefined && typeof record.sourceUrl !== 'string') {
+                            throw new Error(`用户 ${key} 的 records[${recIdx}] sourceUrl 无效`);
+                        }
+                        if (record.sourceTitle !== undefined && typeof record.sourceTitle !== 'string') {
+                            throw new Error(`用户 ${key} 的 records[${recIdx}] sourceTitle 无效`);
+                        }
+                        if (record.quote !== undefined && typeof record.quote !== 'string') {
+                            throw new Error(`用户 ${key} 的 records[${recIdx}] quote 无效`);
+                        }
+                        if (record.note !== undefined && typeof record.note !== 'string') {
+                            throw new Error(`用户 ${key} 的 records[${recIdx}] note 无效`);
+                        }
+                        if (record.tags !== undefined) {
+                            if (!Array.isArray(record.tags)) {
+                                throw new Error(`用户 ${key} 的 records[${recIdx}] tags 必须是数组`);
+                            }
+                            record.tags.forEach(tag => {
+                                if (!isPlainObject(tag) || typeof tag.name !== 'string' || !normalizeText(tag.name, 100)) {
+                                    throw new Error(`用户 ${key} 的 records[${recIdx}] 包含无效标签`);
+                                }
+                                if (tag.category !== undefined && typeof tag.category !== 'string') {
+                                    throw new Error(`用户 ${key} 的 records[${recIdx}] 标签分类无效`);
+                                }
+                            });
+                        }
+                    });
+                }
             });
         }
     }
@@ -355,9 +453,24 @@
     }
 
     function mergeUserData(existing, incoming, categories) {
-        const tags = [...(existing.tags || []).map(cloneData)];
+        if (!isPlainObject(existing) && !isPlainObject(incoming)) return null;
+
+        const defaultCategories = categories || DEFAULT_CATEGORIES;
+        const usernameHint = (incoming && incoming.username) || (existing && existing.username) || '';
+        const normExisting = isPlainObject(existing)
+            ? normalizeUserData(existing.username || usernameHint, existing, defaultCategories)
+            : null;
+        const normIncoming = isPlainObject(incoming)
+            ? normalizeUserData(incoming.username || usernameHint, incoming, defaultCategories)
+            : null;
+
+        if (!normExisting && !normIncoming) return null;
+        if (!normExisting) return normIncoming;
+        if (!normIncoming) return normExisting;
+
+        const tags = [...(normExisting.tags || []).map(cloneData)];
         const tagIndexes = new Map(tags.map((tag, index) => [getTagKey(tag), index]));
-        (incoming.tags || []).forEach(tag => {
+        (normIncoming.tags || []).forEach(tag => {
             const key = getTagKey(tag);
             const index = tagIndexes.get(key);
             if (index === undefined) {
@@ -368,15 +481,48 @@
             }
         });
 
-        return normalizeUserData(incoming.username || existing.username, {
-            ...existing,
-            ...incoming,
+        const mergedRecords = [];
+        const getCompKey = (r) => (r && r.time > 0 && r.sourceUrl) ? `${r.time}\u0000${r.sourceUrl}` : null;
+
+        function addRecord(record, isIncoming) {
+            const compKey = getCompKey(record);
+            const existingIdx = mergedRecords.findIndex(item => {
+                if (record.id && item.id && record.id === item.id) return true;
+                if (compKey && getCompKey(item) === compKey) return true;
+                return false;
+            });
+
+            if (existingIdx === -1) {
+                mergedRecords.push(cloneData(record));
+            } else if (isIncoming) {
+                mergedRecords[existingIdx] = cloneData(record);
+            }
+        }
+
+        (normExisting.records || []).forEach(r => addRecord(r, false));
+        (normIncoming.records || []).forEach(r => addRecord(r, true));
+
+        mergedRecords.sort((a, b) => b.time - a.time);
+
+        const updatedAt = Math.max(
+            normExisting.updatedAt || 0,
+            normIncoming.updatedAt || 0,
+            mergedRecords[0]?.time || 0
+        );
+        const sourceUrl = mergedRecords[0]?.sourceUrl || normIncoming.sourceUrl || normExisting.sourceUrl || '';
+        const sourceTitle = mergedRecords[0]?.sourceTitle || normIncoming.sourceTitle || normExisting.sourceTitle || '';
+        const note = normIncoming.note || normExisting.note || mergedRecords[0]?.note || '';
+        const username = normIncoming.username || normExisting.username;
+
+        return {
+            username,
             tags,
-            note: incoming.note || existing.note || '',
-            sourceUrl: incoming.sourceUrl || existing.sourceUrl || '',
-            sourceTitle: incoming.sourceTitle || existing.sourceTitle || '',
-            updatedAt: Math.max(Number(existing.updatedAt) || 0, Number(incoming.updatedAt) || 0)
-        }, categories);
+            note,
+            sourceUrl,
+            sourceTitle,
+            updatedAt,
+            records: mergedRecords
+        };
     }
 
     function startsWithEmoji(str) {

@@ -73,6 +73,26 @@ test('legacy user with only note and no tags auto-migrates to 1 record', () => {
     assert.strictEqual(user.records[0].tags.length, 0, 'record.tags should be empty array');
 });
 
+test('legacy user with only tags and no note auto-migrates to 1 record', () => {
+    const rawUser = {
+        username: 'tag_only_user',
+        tags: [{ name: '🌟 活跃', category: 'good' }],
+        sourceUrl: 'https://linux.do/t/topic/88',
+        sourceTitle: '活跃帖',
+        updatedAt: 1726570000000
+    };
+
+    const user = normalizeUserData('tag_only_user', rawUser, DEFAULT_CATEGORIES);
+
+    assert(user !== null, 'user should not be null');
+    assert(Array.isArray(user.records), 'user.records must be an array');
+    assert.strictEqual(user.records.length, 1, 'records should have 1 synthesized record');
+    assert.strictEqual(user.records[0].note, '', 'record.note should be empty string');
+    assert.strictEqual(user.records[0].tags.length, 1, 'record.tags should contain 1 tag');
+    assert.strictEqual(user.records[0].tags[0].name, '🌟 活跃');
+    assert.strictEqual(user.records[0].time, 1726570000000);
+});
+
 test('user without tags and note produces empty records array', () => {
     const rawUser = {
         username: 'empty_user'
@@ -346,6 +366,47 @@ test('outer snapshot fields remain in sync with the latest record state', () => 
     assert.strictEqual(merged.updatedAt, 5000);
     assert.strictEqual(merged.sourceUrl, 'https://linux.do/new');
     assert.strictEqual(merged.sourceTitle, '最新标题');
+});
+
+test('merging user with records and legacy user without records directly via mergeUserData', () => {
+    const userWithRecords = {
+        username: 'mix_user',
+        records: [
+            {
+                id: 'rec_v2',
+                time: 3000,
+                sourceUrl: 'https://linux.do/t/topic/30',
+                sourceTitle: '新记录',
+                quote: '新言论',
+                note: '新记录备注',
+                tags: [{ name: '💻 极客', category: 'good' }]
+            }
+        ]
+    };
+
+    const legacyUser = {
+        username: 'mix_user',
+        tags: [{ name: '🌱 新手', category: 'good' }],
+        note: '老备注',
+        sourceUrl: 'https://linux.do/t/topic/10',
+        sourceTitle: '老帖子',
+        updatedAt: 1000
+    };
+
+    const merged = mergeUserData(userWithRecords, legacyUser, DEFAULT_CATEGORIES);
+
+    assert(Array.isArray(merged.records), 'merged.records must be an array');
+    assert.strictEqual(merged.records.length, 2, 'both records should be present');
+    assert.strictEqual(merged.records[0].id, 'rec_v2', 'newer record should be first');
+    assert.strictEqual(merged.records[1].note, '老备注', 'legacy record synthesized and preserved');
+    assert.strictEqual(merged.records[1].time, 1000);
+    assert.strictEqual(merged.tags.length, 2, 'tags from both should be merged');
+
+    const mergedReverse = mergeUserData(legacyUser, userWithRecords, DEFAULT_CATEGORIES);
+    assert(Array.isArray(mergedReverse.records));
+    assert.strictEqual(mergedReverse.records.length, 2);
+    assert.strictEqual(mergedReverse.records[0].id, 'rec_v2');
+    assert.strictEqual(mergedReverse.records[1].time, 1000);
 });
 
 console.log('\nSuite 4: Schema Validation in validateImportShape');
