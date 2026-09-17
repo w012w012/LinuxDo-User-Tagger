@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LinuxDo User Tagger (Linux.do 用户打标与分类工具)
 // @namespace    https://github.com/w012w012/LinuxDo-User-Tagger
-// @version      0.0.2
+// @version      0.0.3
 // @description  为 Linux.do 论坛用户添加自定义标签与备注，支持【有营养】与【没营养】分类、超全语义 Emoji 智能字典、自主增删标签库、已有标签与备注展示、防冲动回帖警示、本地持久化与导入导出。
 // @author       w012w012
 // @homepageURL  https://github.com/w012w012/LinuxDo-User-Tagger
@@ -1103,6 +1103,62 @@
             opacity: 0.9;
             transform: translateY(-1px);
             box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15) !important;
+        }
+
+        /* 列表页紧凑标签徽章 */
+        .ld-tag-badge-compact {
+            font-size: 10px !important;
+            padding: 1px 6px !important;
+            border-radius: 10px !important;
+            display: inline-flex !important;
+            margin-left: 4px !important;
+            vertical-align: middle !important;
+            line-height: 1.3 !important;
+        }
+
+        /* 帖子列表页标签外层容器 */
+        .ld-topic-tag-wrap {
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 3px !important;
+            margin-left: 6px !important;
+            vertical-align: middle !important;
+        }
+
+        /* 个人主页标签栏样式扩展 */
+        .ld-profile-tag-wrap {
+            margin-top: 6px !important;
+            margin-bottom: 6px !important;
+            display: flex !important;
+            align-items: center !important;
+            flex-wrap: wrap !important;
+            gap: 6px !important;
+        }
+
+        /* 顶部导航栏入口按钮 */
+        .ld-header-btn-wrap {
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            vertical-align: middle !important;
+        }
+        .ld-header-icon-btn {
+            background: transparent !important;
+            border: none !important;
+            cursor: pointer !important;
+            padding: 6px 8px !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            font-size: 16px !important;
+            line-height: 1 !important;
+            border-radius: 4px !important;
+            transition: background 0.15s ease, transform 0.15s ease !important;
+            color: var(--header_primary, #555) !important;
+        }
+        .ld-header-icon-btn:hover {
+            background: var(--header_hover, rgba(0, 0, 0, 0.06)) !important;
+            transform: scale(1.05);
         }
 
         /* 添加标签按钮 */
@@ -2627,6 +2683,178 @@
         return null;
     }
 
+    function extractTopicAuthor(topicItem) {
+        if (!topicItem || typeof topicItem.querySelector !== 'function') return null;
+        const posterEl = topicItem.querySelector('.posters a:first-child, .creator a, [data-user-card]');
+        if (!posterEl) return null;
+
+        const cardAttr = typeof posterEl.getAttribute === 'function' ? posterEl.getAttribute('data-user-card') : null;
+        if (cardAttr && cardAttr.trim()) {
+            return cardAttr.trim().replace(/^@/, '');
+        }
+
+        if (typeof posterEl.getAttribute === 'function') {
+            const href = posterEl.getAttribute('href') || '';
+            const match = href.match(/\/u\/([^/?#]+)/);
+            if (match && match[1]) {
+                try {
+                    return decodeURIComponent(match[1]).trim().replace(/^@/, '');
+                } catch {
+                    return match[1].trim().replace(/^@/, '');
+                }
+            }
+        }
+
+        const username = extractUsername(posterEl);
+        if (username) return username;
+
+        const text = posterEl.textContent ? posterEl.textContent.trim().replace(/^@/, '') : '';
+        return text || null;
+    }
+
+    function extractProfileUsername(pathname, profileEl) {
+        if (typeof pathname === 'string') {
+            const match = pathname.match(/\/u\/([^/?#]+)/);
+            if (match && match[1]) {
+                try {
+                    return decodeURIComponent(match[1]).trim().replace(/^@/, '');
+                } catch {
+                    return match[1].trim().replace(/^@/, '');
+                }
+            }
+        }
+        if (profileEl) {
+            return extractUsername(profileEl);
+        }
+        return null;
+    }
+
+    function injectHeaderButton(doc = (typeof document !== 'undefined' ? document : null), onOpen) {
+        if (!doc || typeof doc.querySelector !== 'function') return;
+        const container = doc.querySelector('.d-header-icons, .d-header .panel, header .icons');
+        if (!container || container.querySelector('.ld-header-btn-wrap')) return;
+
+        const isUl = container.tagName && container.tagName.toLowerCase() === 'ul';
+        const wrap = doc.createElement(isUl ? 'li' : 'div');
+        wrap.className = 'ld-header-btn-wrap';
+
+        const btn = doc.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-flat icon ld-header-icon-btn';
+        btn.setAttribute('title', '标签与数据管理中心');
+        btn.setAttribute('aria-label', '标签与数据管理中心');
+        btn.textContent = '🏷️';
+        if (typeof makeKeyboardActivatable === 'function') {
+            makeKeyboardActivatable(btn);
+        }
+        btn.addEventListener('click', (e) => {
+            if (e && e.preventDefault) e.preventDefault();
+            if (e && e.stopPropagation) e.stopPropagation();
+            if (typeof onOpen === 'function') {
+                onOpen();
+            } else if (typeof openManagerModal === 'function') {
+                openManagerModal();
+            }
+        });
+
+        wrap.appendChild(btn);
+        if (typeof container.prepend === 'function') {
+            container.prepend(wrap);
+        } else if (container.firstChild && typeof container.insertBefore === 'function') {
+            container.insertBefore(wrap, container.firstChild);
+        } else if (typeof container.appendChild === 'function') {
+            container.appendChild(wrap);
+        }
+    }
+
+    function renderTopicItemBadges(topicItem, storageInstance, tooltipInstance, popoverInstance) {
+        if (!topicItem || typeof topicItem.querySelector !== 'function') return;
+        const author = extractTopicAuthor(topicItem);
+        const existingWrap = topicItem.querySelector('.ld-topic-tag-wrap');
+        if (!author) return;
+
+        const currentStorage = storageInstance || (typeof storage !== 'undefined' ? storage : null);
+        const userData = currentStorage && typeof currentStorage.getUser === 'function' ? currentStorage.getUser(author) : null;
+        const tags = (userData && userData.tags) ? userData.tags : [];
+        if (tags.length === 0) {
+            if (existingWrap && typeof existingWrap.remove === 'function') {
+                existingWrap.remove();
+            }
+            return;
+        }
+
+        const titleTarget = topicItem.querySelector('.title, a.title, .raw-topic-link, .topic-title a') || topicItem.querySelector('.main-link');
+        if (!titleTarget) return;
+
+        let tagWrap = existingWrap;
+        if (!tagWrap) {
+            const doc = topicItem.ownerDocument || (typeof document !== 'undefined' ? document : null);
+            if (!doc || typeof doc.createElement !== 'function') return;
+            tagWrap = doc.createElement('span');
+            tagWrap.className = 'ld-topic-tag-wrap';
+            titleTarget.appendChild(tagWrap);
+        }
+
+        const normalizedKey = author.toLowerCase();
+        if (tagWrap.getAttribute('data-ld-user') !== normalizedKey || tagWrap.getAttribute('data-ld-dirty') === 'true') {
+            tagWrap.setAttribute('data-ld-user', normalizedKey);
+            tagWrap.removeAttribute('data-ld-dirty');
+            tagWrap.innerHTML = '';
+            const doc = tagWrap.ownerDocument || (typeof document !== 'undefined' ? document : null);
+            const currentTooltip = tooltipInstance || (typeof tooltip !== 'undefined' ? tooltip : null);
+            const currentPopover = popoverInstance || (typeof popover !== 'undefined' ? popover : null);
+
+            tags.forEach(tag => {
+                const badge = doc.createElement('span');
+                badge.className = 'ld-tag-badge ld-tag-badge-compact';
+                if (badge.style) {
+                    badge.style.color = tag.color || '#333';
+                    badge.style.backgroundColor = tag.bg || '#eee';
+                    badge.style.borderColor = tag.border || 'transparent';
+                }
+                badge.innerText = tag.name;
+                if (typeof makeKeyboardActivatable === 'function') {
+                    makeKeyboardActivatable(badge);
+                }
+
+                badge.addEventListener('mouseenter', (e) => {
+                    let tipHtml = `<strong>@${escapeHtml(author)}</strong>: ${escapeHtml(tag.name)}`;
+                    if (userData.note) {
+                        tipHtml += `<div style="margin-top:4px;color:#ddd;">💬 ${escapeHtml(userData.note)}</div>`;
+                    }
+                    if (userData.sourceTitle) {
+                        tipHtml += `<div style="margin-top:4px;font-size:10px;color:#bbb;">🔗 来源: ${escapeHtml(userData.sourceTitle)}</div>`;
+                    }
+                    if (userData.updatedAt) {
+                        const dateStr = new Date(userData.updatedAt).toLocaleDateString();
+                        tipHtml += `<div style="margin-top:2px;font-size:9px;color:#999;">🕒 标记时间: ${escapeHtml(dateStr)}</div>`;
+                    }
+                    if (currentTooltip && typeof currentTooltip.show === 'function') {
+                        currentTooltip.show(e, tipHtml);
+                    }
+                });
+                badge.addEventListener('mouseleave', () => {
+                    if (currentTooltip && typeof currentTooltip.hide === 'function') {
+                        currentTooltip.hide();
+                    }
+                });
+
+                badge.addEventListener('click', (e) => {
+                    if (e && e.stopPropagation) e.stopPropagation();
+                    if (e && e.preventDefault) e.preventDefault();
+                    if (currentTooltip && typeof currentTooltip.hide === 'function') {
+                        currentTooltip.hide();
+                    }
+                    if (currentPopover && typeof currentPopover.open === 'function') {
+                        currentPopover.open(author, badge);
+                    }
+                });
+
+                tagWrap.appendChild(badge);
+            });
+        }
+    }
+
     function renderUserTags(container, username) {
         if (!container || !username) return;
         
@@ -2684,6 +2912,18 @@
     }
 
     function scanAndInject() {
+        if (typeof document === 'undefined') return;
+
+        // 1. 顶部导航常驻入口
+        injectHeaderButton(document, openManagerModal);
+
+        // 2. 帖子列表页项标签徽章
+        const topicItems = document.querySelectorAll('.topic-list-item');
+        topicItems.forEach(topicItem => {
+            renderTopicItemBadges(topicItem, storage, tooltip, popover);
+        });
+
+        // 3. 帖子详情页楼层作者
         const postHeaders = document.querySelectorAll('.topic-post .topic-meta-data, .post-stream .topic-meta-data');
         postHeaders.forEach(metaEl => {
             const namesEl = metaEl.querySelector('.names') || metaEl;
@@ -2705,6 +2945,7 @@
             }
         });
 
+        // 4. 用户悬浮卡片 (User Card)
         const userCards = document.querySelectorAll('#user-card.show-user, .user-card.show-user');
         userCards.forEach(userCard => {
             const cardNames = userCard.querySelector('.names');
@@ -2725,12 +2966,35 @@
                 renderUserTags(tagBar, username);
             }
         });
+
+        // 5. 个人主页 (/u/:username)
+        const profileHeader = document.querySelector('.user-profile-names, .user-main .about .details, .user-primary-navigation');
+        if (profileHeader) {
+            const currentPath = (typeof window !== 'undefined' && window.location) ? window.location.pathname : '';
+            const profileUser = extractProfileUsername(currentPath, profileHeader);
+            if (profileUser) {
+                const normalizedKey = profileUser.toLowerCase();
+                let tagBar = profileHeader.querySelector('.ld-tagger-bar');
+                if (!tagBar) {
+                    tagBar = document.createElement('div');
+                    tagBar.className = 'ld-tagger-bar ld-profile-tag-wrap';
+                    profileHeader.appendChild(tagBar);
+                }
+                if (tagBar.getAttribute('data-ld-user') !== normalizedKey || tagBar.getAttribute('data-ld-dirty') === 'true') {
+                    tagBar.setAttribute('data-ld-user', normalizedKey);
+                    tagBar.removeAttribute('data-ld-dirty');
+                    renderUserTags(tagBar, profileUser);
+                }
+            }
+        }
     }
 
     function renderAllTags() {
-        document.querySelectorAll('.ld-tagger-bar').forEach(bar => {
-            bar.setAttribute('data-ld-dirty', 'true');
-        });
+        if (typeof document !== 'undefined') {
+            document.querySelectorAll('.ld-tagger-bar, .ld-topic-tag-wrap').forEach(bar => {
+                bar.setAttribute('data-ld-dirty', 'true');
+            });
+        }
         scanAndInject();
     }
 
@@ -3215,16 +3479,18 @@
 
     let debounceTimer = null;
     function mutationNeedsScan(records) {
-        const relevantSelector = '.topic-post, .topic-meta-data, .names, .user-card, #user-card, [data-user-card]';
+        if (!Array.isArray(records)) return false;
+        const relevantSelector = '.topic-post, .topic-meta-data, .names, .user-card, #user-card, [data-user-card], .d-header, .topic-list-item, .topic-list, .user-profile-names, .user-main, .ld-header-btn-wrap';
         return records.some(record => {
-            const candidates = [record.target, ...record.addedNodes];
+            if (!record) return false;
+            const candidates = [record.target, ...(record.addedNodes || [])];
             return candidates.some(node => {
                 if (!node) return false;
-                const element = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+                const element = (node.nodeType === (typeof Node !== 'undefined' ? Node.ELEMENT_NODE : 1) || !node.nodeType) ? node : node.parentElement;
                 return element && (
-                    element.matches(relevantSelector) || 
-                    Boolean(element.closest(relevantSelector)) || 
-                    Boolean(element.querySelector(relevantSelector))
+                    (typeof element.matches === 'function' && element.matches(relevantSelector)) || 
+                    (typeof element.closest === 'function' && Boolean(element.closest(relevantSelector))) || 
+                    (typeof element.querySelector === 'function' && Boolean(element.querySelector(relevantSelector)))
                 );
             });
         });
@@ -3246,7 +3512,7 @@
 
         scanAndInject();
 
-        console.log('[LinuxDo User Tagger] v0.0.1 运行就绪！');
+        console.log('[LinuxDo User Tagger] v0.0.3 运行就绪！');
     }
 
     if (typeof module !== 'undefined' && module.exports) {
@@ -3262,7 +3528,12 @@
             calculateDashboardStats,
             formatDateTime,
             filterUsers,
-            removeRecordFromUser
+            removeRecordFromUser,
+            extractTopicAuthor,
+            extractProfileUsername,
+            injectHeaderButton,
+            mutationNeedsScan,
+            renderTopicItemBadges
         };
     }
 })();
