@@ -309,7 +309,9 @@
         const outerSourceTitle = records.length > 0
             ? (records[0]?.sourceTitle || sourceTitle)
             : sourceTitle;
-        const outerNote = note || (records.length > 0 ? records[0]?.note || '' : '');
+        const outerNote = records.length > 0
+            ? (records[0]?.note || note)
+            : note;
         const outerTags = tags.length > 0
             ? tags
             : (records.length > 0 ? cloneData(records[0]?.tags || []) : []);
@@ -391,7 +393,7 @@
                         if (record.id !== undefined && typeof record.id !== 'string') {
                             throw new Error(`用户 ${key} 的 records[${recIdx}] id 无效`);
                         }
-                        if (record.time !== undefined && typeof record.time !== 'number') {
+                        if (record.time !== undefined && (!Number.isFinite(record.time) || record.time < 0)) {
                             throw new Error(`用户 ${key} 的 records[${recIdx}] time 无效`);
                         }
                         if (record.sourceUrl !== undefined && typeof record.sourceUrl !== 'string') {
