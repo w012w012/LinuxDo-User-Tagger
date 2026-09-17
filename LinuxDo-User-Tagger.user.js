@@ -655,7 +655,7 @@
             const normalizedUser = userData
                 ? normalizeUserData(normalizedUsername, userData, this.cache.categories)
                 : null;
-            if (!normalizedUser || (normalizedUser.tags.length === 0 && !normalizedUser.note)) {
+            if (!normalizedUser || (normalizedUser.tags.length === 0 && !normalizedUser.note && (!normalizedUser.records || normalizedUser.records.length === 0))) {
                 delete this.cache.users[key];
             } else {
                 this.cache.users[key] = {
@@ -1517,7 +1517,8 @@
                         sourceUrl = fallbackUrl;
                     }
                 }
-            } else {
+            }
+            if (!sourceUrl || !/^https?:\/\//i.test(sourceUrl)) {
                 sourceUrl = fallbackUrl;
             }
         }
@@ -1542,6 +1543,10 @@
             const cookedClone = cookedEl.cloneNode(true);
 
             if (cookedClone.querySelectorAll) {
+                cookedClone.querySelectorAll('.quote, blockquote, aside.quote, pre, code, .badge, .system-badge').forEach(el => {
+                    if (typeof el.remove === 'function') el.remove();
+                });
+
                 cookedClone.querySelectorAll('img.emoji').forEach(img => {
                     const alt = (img.getAttribute && img.getAttribute('alt')) || '';
                     if (typeof document !== 'undefined' && typeof document.createTextNode === 'function') {
@@ -1549,10 +1554,6 @@
                     } else {
                         if (typeof img.remove === 'function') img.remove();
                     }
-                });
-
-                cookedClone.querySelectorAll('.quote, blockquote, aside.quote, pre, code, .badge, .system-badge').forEach(el => {
-                    if (typeof el.remove === 'function') el.remove();
                 });
             }
 
@@ -1933,6 +1934,8 @@
                 const quoteVal = this.popEl.querySelector('#ld-quote-input')?.value?.trim() || '';
 
                 const hasTags = Array.isArray(this.userData.tags) && this.userData.tags.length > 0;
+                const hasRecords = Array.isArray(this.userData.records) && this.userData.records.length > 0;
+
                 if (hasTags || noteVal || quoteVal) {
                     const fallbackUrl = (typeof window !== 'undefined' && window.location?.href) ? window.location.href : '';
                     const fallbackTitle = typeof document !== 'undefined' ? (document.title || '').replace(' - LINUX DO', '').trim() : '';
@@ -1954,6 +1957,11 @@
                     this.userData.note = noteVal;
                     this.userData.sourceUrl = newRecord.sourceUrl;
                     this.userData.sourceTitle = newRecord.sourceTitle;
+                    this.userData.updatedAt = Date.now();
+                    storage.setUser(this.currentUser, this.userData);
+                } else if (hasRecords) {
+                    this.userData.tags = [];
+                    this.userData.note = '';
                     this.userData.updatedAt = Date.now();
                     storage.setUser(this.currentUser, this.userData);
                 } else {
