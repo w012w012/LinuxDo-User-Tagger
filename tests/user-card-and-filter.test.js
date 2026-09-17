@@ -177,6 +177,27 @@ test('updates snapshot note and updatedAt when latest record is removed', () => 
     assert.strictEqual(updated.updatedAt, 1000);
 });
 
+test('updates snapshot sourceUrl and sourceTitle when latest record is removed', () => {
+    const user = {
+        username: 'testuser',
+        tags: [{ name: 'tag1' }],
+        note: 'note 1',
+        sourceUrl: 'https://linux.do/t/1/1',
+        sourceTitle: 'Topic 1',
+        updatedAt: 2000,
+        records: [
+            { id: 'rec2', time: 2000, note: 'note 2', sourceUrl: 'https://linux.do/t/2/2', sourceTitle: 'Topic 2' },
+            { id: 'rec1', time: 1000, note: 'note 1', sourceUrl: 'https://linux.do/t/1/1', sourceTitle: 'Topic 1' }
+        ]
+    };
+    const updated = removeRecordFromUser(user, 'rec2');
+    assert.strictEqual(updated.records.length, 1);
+    assert.strictEqual(updated.sourceUrl, 'https://linux.do/t/1/1');
+    assert.strictEqual(updated.sourceTitle, 'Topic 1');
+    assert.strictEqual(updated.note, 'note 1');
+    assert.strictEqual(updated.updatedAt, 1000);
+});
+
 test('returns user with empty records when last record removed but tags still exist', () => {
     const user = {
         username: 'testuser',

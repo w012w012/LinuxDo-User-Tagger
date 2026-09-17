@@ -681,9 +681,9 @@
 
         if (newRecords.length > 0) {
             cloned.updatedAt = newRecords[0].time || cloned.updatedAt || Date.now();
-            if (newRecords[0].note) {
-                cloned.note = newRecords[0].note;
-            }
+            cloned.note = newRecords[0].note || '';
+            cloned.sourceUrl = newRecords[0].sourceUrl || '';
+            cloned.sourceTitle = newRecords[0].sourceTitle || '';
         }
 
         const hasTags = Array.isArray(cloned.tags) && cloned.tags.length > 0;
@@ -1621,7 +1621,7 @@
             display: inline-flex;
             align-items: center;
             gap: 2px;
-            max-width: 320px;
+            max-width: min(320px, 100%);
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -3040,7 +3040,7 @@
 
                 const hasOlderRecords = records.length >= 2;
                 const olderRecordsHtml = hasOlderRecords ? `
-                    <button type="button" class="ld-timeline-toggle">▼ 查看历史战绩 (共 ${records.length} 条)</button>
+                    <button type="button" class="ld-timeline-toggle" aria-expanded="false">▼ 查看历史战绩 (共 ${records.length} 条)</button>
                     <div class="ld-timeline-container">
                         ${records.slice(1).map(r => {
                             const rTimeStr = formatDateTime(r.time);
@@ -3056,7 +3056,7 @@
                                             ${r.sourceUrl ? `<a href="${escapeHtml(r.sourceUrl)}" target="_blank" rel="noopener noreferrer" class="ld-post-link">🔗 ${escapeHtml(r.sourceTitle || '关联帖子')}</a>` : ''}
                                             ${rTimeStr ? `<span>🕒 ${escapeHtml(rTimeStr)}</span>` : ''}
                                         </div>
-                                        <button type="button" class="ld-btn-del-record" title="删除此条历史记录" data-record-id="${escapeHtml(r.id)}">&times;</button>
+                                        <button type="button" class="ld-btn-del-record" title="删除此条历史记录" aria-label="删除此条历史记录" data-record-id="${escapeHtml(r.id)}">&times;</button>
                                     </div>
                                     ${rTagsHtml}
                                     ${r.quote ? `<div class="ld-record-quote">“${escapeHtml(r.quote)}”</div>` : ''}
@@ -3071,7 +3071,7 @@
                     <div class="ld-user-card-header">
                         <div class="ld-user-card-title">
                             <div class="ld-user-avatar-placeholder">${escapeHtml((u.username || '?')[0].toUpperCase())}</div>
-                            <a href="/u/${encodeURIComponent(u.username)}" target="_blank" class="ld-user-name-link">@${escapeHtml(u.username)}</a>
+                            <a href="/u/${encodeURIComponent(u.username)}" target="_blank" rel="noopener noreferrer" class="ld-user-name-link">@${escapeHtml(u.username)}</a>
                             <div style="display: flex; gap: 4px; flex-wrap: wrap;">
                                 ${tagsHtml}
                             </div>
@@ -3122,6 +3122,7 @@
                 if (toggleBtn && timelineContainer) {
                     toggleBtn.addEventListener('click', () => {
                         const isOpen = timelineContainer.classList.toggle('open');
+                        toggleBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
                         toggleBtn.innerHTML = isOpen
                             ? `▲ 收起历史战绩`
                             : `▼ 查看历史战绩 (共 ${records.length} 条)`;
