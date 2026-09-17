@@ -1237,8 +1237,8 @@
             border-color: var(--tertiary, #0088cc);
         }
 
-        /* 备注输入框 */
-        .ld-note-input {
+        /* 备注与言论引用输入框 */
+        .ld-note-input, .ld-quote-input {
             width: 100%;
             padding: 5px 8px;
             border-radius: 5px;
@@ -1249,7 +1249,13 @@
             box-sizing: border-box;
             font-family: inherit;
         }
-        .ld-note-input:focus {
+        .ld-quote-input {
+            resize: vertical;
+            min-height: 46px;
+            line-height: 1.4;
+            margin-bottom: 4px;
+        }
+        .ld-note-input:focus, .ld-quote-input:focus {
             outline: none;
             border-color: var(--tertiary, #0088cc);
         }
@@ -1443,11 +1449,134 @@
     // ==========================================
     // 6. Popover 编辑弹窗模块 (全响应式 + 安全转义)
     // ==========================================
+    function extractPostContext(triggerElement) {
+        const fallbackUrl = (typeof window !== 'undefined' && window.location?.href) ? window.location.href : '';
+        const fallbackDocTitle = typeof document !== 'undefined' ? (document.title || '').replace(' - LINUX DO', '').trim() : '';
+        const fallbackFancyTitle = typeof document !== 'undefined' && document.querySelector ? document.querySelector('.fancy-title')?.textContent?.trim() : '';
+        const fallbackTitle = fallbackFancyTitle || fallbackDocTitle || '';
+
+        if (!triggerElement || typeof triggerElement.closest !== 'function') {
+            return {
+                sourceUrl: fallbackUrl,
+                sourceTitle: fallbackTitle,
+                quote: ''
+            };
+        }
+
+        const postArticle = triggerElement.closest('.topic-post, article.boxed, article');
+        if (!postArticle) {
+            return {
+                sourceUrl: fallbackUrl,
+                sourceTitle: fallbackTitle,
+                quote: ''
+            };
+        }
+
+        // 1. Post link / direct floor URL
+        let sourceUrl = '';
+        const postDateLink = postArticle.querySelector ? postArticle.querySelector('a.post-date[href], .post-info a[href*="/"]') : null;
+        if (postDateLink) {
+            const href = (postDateLink.getAttribute && postDateLink.getAttribute('href')) || postDateLink.href;
+            if (href) {
+                try {
+                    const origin = (typeof window !== 'undefined' && window.location?.origin) ? window.location.origin : 'https://linux.do';
+                    sourceUrl = new URL(href, origin).href;
+                } catch (e) {
+                    sourceUrl = href;
+                }
+            }
+        }
+
+        if (!sourceUrl) {
+            let postNumber = postArticle.getAttribute ? postArticle.getAttribute('data-post-number') : null;
+            if (!postNumber && postArticle.querySelector) {
+                const postNumEl = postArticle.querySelector('.post-number');
+                if (postNumEl && postNumEl.textContent) {
+                    postNumber = postNumEl.textContent.replace(/[^0-9]/g, '');
+                }
+            }
+            if (!postNumber && postArticle.getAttribute) {
+                const idAttr = postArticle.getAttribute('id') || '';
+                const match = idAttr.match(/^post_(\d+)$/);
+                if (match) postNumber = match[1];
+            }
+
+            if (postNumber && typeof window !== 'undefined' && window.location) {
+                const origin = window.location.origin || '';
+                const pathname = window.location.pathname || '';
+                const segments = pathname.split('/').filter(Boolean);
+                if (segments.length >= 3 && /^\d+$/.test(segments[2])) {
+                    sourceUrl = `${origin}/t/${segments[1]}/${segments[2]}/${postNumber}`;
+                } else if (segments.length >= 2 && /^\d+$/.test(segments[1])) {
+                    sourceUrl = `${origin}/t/${segments[1]}/${postNumber}`;
+                } else {
+                    const topicMatch = pathname.match(/^(\/t\/[^/]+(?:\/\d+)?)/);
+                    if (topicMatch) {
+                        sourceUrl = `${origin}${topicMatch[1]}/${postNumber}`;
+                    } else {
+                        sourceUrl = fallbackUrl;
+                    }
+                }
+            } else {
+                sourceUrl = fallbackUrl;
+            }
+        }
+
+        // 2. Title
+        let sourceTitle = '';
+        if (typeof document !== 'undefined') {
+            const fancyTitleEl = document.querySelector ? document.querySelector('.fancy-title') : null;
+            if (fancyTitleEl && fancyTitleEl.textContent) {
+                sourceTitle = fancyTitleEl.textContent.trim();
+            }
+            if (!sourceTitle && document.title) {
+                sourceTitle = document.title.replace(' - LINUX DO', '').trim();
+            }
+        }
+        if (!sourceTitle) sourceTitle = fallbackTitle;
+
+        // 3. Cooked quote text
+        let quote = '';
+        const cookedEl = postArticle.querySelector ? postArticle.querySelector('.cooked') : null;
+        if (cookedEl && typeof cookedEl.cloneNode === 'function') {
+            const cookedClone = cookedEl.cloneNode(true);
+
+            if (cookedClone.querySelectorAll) {
+                cookedClone.querySelectorAll('img.emoji').forEach(img => {
+                    const alt = (img.getAttribute && img.getAttribute('alt')) || '';
+                    if (typeof document !== 'undefined' && typeof document.createTextNode === 'function') {
+                        img.replaceWith(document.createTextNode(alt));
+                    } else {
+                        if (typeof img.remove === 'function') img.remove();
+                    }
+                });
+
+                cookedClone.querySelectorAll('.quote, blockquote, aside.quote, pre, code, .badge, .system-badge').forEach(el => {
+                    if (typeof el.remove === 'function') el.remove();
+                });
+            }
+
+            const rawText = cookedClone.textContent || '';
+            quote = rawText.replace(/\s+/g, ' ').trim();
+            if (quote.length > 150) {
+                quote = quote.slice(0, 150);
+            }
+        }
+
+        return {
+            sourceUrl: sourceUrl || fallbackUrl,
+            sourceTitle: sourceTitle || fallbackTitle,
+            quote: quote || ''
+        };
+    }
+
     const popover = {
         maskEl: null,
         popEl: null,
         currentUser: null,
         userData: null,
+        currentContext: null,
+        currentQuote: '',
         deleteModeMap: { good: false, bad: false },
         addingCategory: null,
         selectedEmojiMap: {},
@@ -1458,15 +1587,34 @@
             this.deleteModeMap = { good: false, bad: false };
             this.addingCategory = null;
             this.selectedEmojiMap = {};
-            
+
+            const postContext = extractPostContext(triggerElement);
+            this.currentContext = postContext;
+
+            const fallbackUrl = (typeof window !== 'undefined' && window.location?.href) ? window.location.href : '';
+            const fallbackTitle = typeof document !== 'undefined' ? (document.title || '').replace(' - LINUX DO', '').trim() : '';
+
             const rawUser = storage.getUser(username);
             this.userData = rawUser ? JSON.parse(JSON.stringify(rawUser)) : {
                 username: username,
                 tags: [],
                 note: "",
-                sourceUrl: window.location.href,
-                sourceTitle: document.title.replace(' - LINUX DO', '').trim()
+                records: [],
+                sourceUrl: postContext.sourceUrl || fallbackUrl,
+                sourceTitle: postContext.sourceTitle || fallbackTitle
             };
+            if (!this.userData.records) {
+                this.userData.records = [];
+            }
+
+            this.currentQuote = postContext.quote || this.userData.records?.[0]?.quote || '';
+            this.userData.note = this.userData.note || '';
+            if (!this.userData.sourceUrl) {
+                this.userData.sourceUrl = postContext.sourceUrl || fallbackUrl;
+            }
+            if (!this.userData.sourceTitle) {
+                this.userData.sourceTitle = postContext.sourceTitle || fallbackTitle;
+            }
 
             this.maskEl = document.createElement('div');
             this.maskEl.className = 'ld-popover-mask';
@@ -1475,18 +1623,22 @@
             this.popEl = document.createElement('div');
             this.popEl.className = 'ld-popover';
 
-            const rect = triggerElement.getBoundingClientRect();
-            const popWidth = Math.min(390, window.innerWidth - 20);
-            const popHeight = 490;
+            const rect = triggerElement && typeof triggerElement.getBoundingClientRect === 'function' 
+                ? triggerElement.getBoundingClientRect() 
+                : { left: 100, bottom: 100, top: 80 };
+            const winWidth = typeof window !== 'undefined' && window.innerWidth ? window.innerWidth : 800;
+            const winHeight = typeof window !== 'undefined' && window.innerHeight ? window.innerHeight : 600;
+            const popWidth = Math.min(390, winWidth - 20);
+            const popHeight = 520;
 
             let posX = rect.left;
-            if (posX + popWidth > window.innerWidth - 10) {
-                posX = window.innerWidth - popWidth - 10;
+            if (posX + popWidth > winWidth - 10) {
+                posX = winWidth - popWidth - 10;
             }
             posX = Math.max(8, posX);
 
             let posY = rect.bottom + 6;
-            if (posY + popHeight > window.innerHeight - 15) {
+            if (posY + popHeight > winHeight - 15) {
                 posY = Math.max(10, rect.top - popHeight - 6);
             }
 
@@ -1499,6 +1651,13 @@
         },
 
         render() {
+            if (this.popEl) {
+                const quoteEl = this.popEl.querySelector('#ld-quote-input');
+                if (quoteEl) this.currentQuote = quoteEl.value;
+                const noteEl = this.popEl.querySelector('#ld-note-input');
+                if (noteEl) this.userData.note = noteEl.value;
+            }
+
             const categories = storage.getCategories();
             const currentTagKeys = new Set((this.userData.tags || []).map(getTagKey));
 
@@ -1579,13 +1738,23 @@
                     <span class="ld-popover-close">&times;</span>
                 </div>
 
-                <!-- 📌 已有标签与备注区域 -->
+                <!-- 📌 已有标签、出处引述与备注区域 -->
                 <div class="ld-current-section">
                     <div style="font-size: 11px; font-weight: bold; color: var(--primary, #333);">📌 该用户已有标签:</div>
                     <div class="ld-current-tags-wrapper">
                         ${currentTagsHtml}
                     </div>
-                    <div style="font-size: 11px; font-weight: bold; color: var(--primary, #333); margin-bottom: 4px;">💬 备注说明:</div>
+
+                    <div style="font-size: 11px; font-weight: bold; color: var(--primary, #333); margin-top: 6px; margin-bottom: 4px;">💬 标记言论与出处引述:</div>
+                    <textarea class="ld-quote-input" id="ld-quote-input" rows="2" maxlength="200" placeholder="自动提取的楼层言论，可自由修改...">${escapeHtml(this.currentQuote || '')}</textarea>
+
+                    ${this.currentContext?.sourceUrl ? `
+                        <div style="font-size: 11px; margin-bottom: 6px; color: var(--primary-medium, #666); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            🔗 来源: <a href="${escapeHtml(this.currentContext.sourceUrl)}" target="_blank" rel="noopener noreferrer" style="color: var(--tertiary, #0088cc); text-decoration: underline;" title="${escapeHtml(this.currentContext.sourceTitle || this.currentContext.sourceUrl)}">${escapeHtml(this.currentContext.sourceTitle || this.currentContext.sourceUrl)}</a>
+                        </div>
+                    ` : ''}
+
+                    <div style="font-size: 11px; font-weight: bold; color: var(--primary, #333); margin-bottom: 4px;">📝 备注说明:</div>
                     <input type="text" class="ld-note-input" id="ld-note-input" maxlength="1000" value="${escapeHtml(this.userData.note || '')}" placeholder="简短备注 (选填，如：某帖抬杠 / 某领域大佬)..." />
                 </div>
 
@@ -1607,6 +1776,13 @@
         bindEvents() {
             this.popEl.querySelector('.ld-popover-close').addEventListener('click', () => this.close());
             this.popEl.querySelector('#ld-btn-cancel').addEventListener('click', () => this.close());
+
+            const quoteInput = this.popEl.querySelector('#ld-quote-input');
+            if (quoteInput) {
+                quoteInput.addEventListener('input', (e) => {
+                    this.currentQuote = e.target.value;
+                });
+            }
 
             const noteInput = this.popEl.querySelector('#ld-note-input');
             if (noteInput) {
@@ -1754,12 +1930,35 @@
 
             this.popEl.querySelector('#ld-btn-save').addEventListener('click', () => {
                 const noteVal = this.popEl.querySelector('#ld-note-input')?.value?.trim() || '';
-                this.userData.note = noteVal;
-                if (!this.userData.sourceUrl) {
-                    this.userData.sourceUrl = window.location.href;
-                    this.userData.sourceTitle = document.title.replace(' - LINUX DO', '').trim();
+                const quoteVal = this.popEl.querySelector('#ld-quote-input')?.value?.trim() || '';
+
+                const hasTags = Array.isArray(this.userData.tags) && this.userData.tags.length > 0;
+                if (hasTags || noteVal || quoteVal) {
+                    const fallbackUrl = (typeof window !== 'undefined' && window.location?.href) ? window.location.href : '';
+                    const fallbackTitle = typeof document !== 'undefined' ? (document.title || '').replace(' - LINUX DO', '').trim() : '';
+
+                    const sourceUrl = (this.currentContext && this.currentContext.sourceUrl) || this.userData.sourceUrl || fallbackUrl;
+                    const sourceTitle = (this.currentContext && this.currentContext.sourceTitle) || this.userData.sourceTitle || fallbackTitle;
+
+                    const newRecord = {
+                        id: `rec_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                        time: Date.now(),
+                        sourceUrl: sourceUrl,
+                        sourceTitle: sourceTitle,
+                        quote: quoteVal,
+                        note: noteVal,
+                        tags: [...(this.userData.tags || [])]
+                    };
+
+                    this.userData.records = [newRecord, ...(this.userData.records || [])];
+                    this.userData.note = noteVal;
+                    this.userData.sourceUrl = newRecord.sourceUrl;
+                    this.userData.sourceTitle = newRecord.sourceTitle;
+                    this.userData.updatedAt = Date.now();
+                    storage.setUser(this.currentUser, this.userData);
+                } else {
+                    storage.setUser(this.currentUser, null);
                 }
-                storage.setUser(this.currentUser, this.userData);
                 this.close();
                 renderAllTags();
             });
@@ -1780,15 +1979,19 @@
                 this.maskEl.remove();
                 this.maskEl = null;
             }
+            this.currentQuote = '';
+            this.currentContext = null;
         }
     };
 
     // 全局 Esc 键快速关闭弹窗
-    if (typeof document !== 'undefined') {
+    if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 if (popover.popEl) popover.close();
-                tooltip.hide();
+                if (typeof tooltip !== 'undefined' && typeof tooltip.hide === 'function') {
+                    tooltip.hide();
+                }
             }
         });
     }
@@ -2292,7 +2495,8 @@
             smartFormatTagName,
             normalizeCategories,
             normalizeUsers,
-            DEFAULT_CATEGORIES
+            DEFAULT_CATEGORIES,
+            extractPostContext
         };
     }
 })();
