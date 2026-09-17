@@ -533,6 +533,97 @@
         };
     }
 
+    function calculateDashboardStats(users) {
+        const result = {
+            totalUsers: 0,
+            totalRecords: 0,
+            goodCount: 0,
+            badCount: 0,
+            neutralCount: 0,
+            goodRatio: '0.0%',
+            badRatio: '0.0%',
+            topTags: []
+        };
+
+        if (!users) return result;
+        const userList = Array.isArray(users)
+            ? users
+            : (isPlainObject(users) ? Object.values(users) : []);
+
+        const tagFrequencyMap = new Map();
+
+        userList.forEach(u => {
+            if (!isPlainObject(u)) return;
+
+            const tags = Array.isArray(u.tags) ? u.tags : [];
+            const hasValidTags = tags.some(t => t && typeof t.name === 'string' && t.name.trim().length > 0);
+            const hasValidNote = typeof u.note === 'string' && u.note.trim().length > 0;
+            const records = Array.isArray(u.records) ? u.records : [];
+            const hasValidRecords = records.length > 0;
+
+            if (!hasValidTags && !hasValidNote && !hasValidRecords) {
+                return;
+            }
+
+            result.totalUsers++;
+
+            if (hasValidRecords) {
+                result.totalRecords += records.length;
+            } else if (hasValidTags || hasValidNote) {
+                result.totalRecords += 1;
+            }
+
+            const hasGood = tags.some(t => t && t.category === 'good');
+            const hasBad = tags.some(t => t && t.category === 'bad');
+
+            if (hasGood) result.goodCount++;
+            if (hasBad) result.badCount++;
+            if (!hasGood && !hasBad) result.neutralCount++;
+
+            const seenTagsOnUser = new Set();
+            tags.forEach(t => {
+                if (!t || typeof t.name !== 'string') return;
+                const tagName = t.name.trim();
+                if (!tagName || seenTagsOnUser.has(tagName)) return;
+                seenTagsOnUser.add(tagName);
+
+                if (!tagFrequencyMap.has(tagName)) {
+                    tagFrequencyMap.set(tagName, {
+                        name: tagName,
+                        count: 0,
+                        color: t.color || '',
+                        bg: t.bg || '',
+                        border: t.border || '',
+                        category: t.category || ''
+                    });
+                }
+                const entry = tagFrequencyMap.get(tagName);
+                entry.count++;
+                if (!entry.color && t.color) entry.color = t.color;
+                if (!entry.bg && t.bg) entry.bg = t.bg;
+                if (!entry.border && t.border) entry.border = t.border;
+                if (!entry.category && t.category) entry.category = t.category;
+            });
+        });
+
+        const ratedTotal = result.goodCount + result.badCount;
+        if (ratedTotal > 0) {
+            result.goodRatio = `${((result.goodCount / ratedTotal) * 100).toFixed(1)}%`;
+            result.badRatio = `${((result.badCount / ratedTotal) * 100).toFixed(1)}%`;
+        }
+
+        const sortedTags = Array.from(tagFrequencyMap.values()).sort((a, b) => {
+            if (b.count !== a.count) {
+                return b.count - a.count;
+            }
+            return a.name.localeCompare(b.name);
+        });
+
+        result.topTags = sortedTags.slice(0, 5);
+
+        return result;
+    }
+
     function startsWithEmoji(str) {
         if (!str) return false;
         const emojiRegex = /^(\p{Extended_Pictographic}|\p{Emoji_Presentation})/u;
@@ -1398,7 +1489,141 @@
             color: var(--primary-medium, #777);
         }
 
+        /* Bento 统计看板 */
+        .ld-dashboard-wrapper {
+            background: var(--primary-very-low, rgba(0, 0, 0, 0.02));
+            border: 1px solid var(--primary-low, #e5e7eb);
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-bottom: 12px;
+        }
+        .ld-dashboard-bento {
+            display: grid;
+            grid-template-columns: 1fr 1.25fr 1.15fr;
+            gap: 10px;
+        }
+        .ld-stat-card {
+            background: var(--secondary, #ffffff);
+            border: 1px solid var(--primary-low, #e5e7eb);
+            border-radius: 6px;
+            padding: 8px 10px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-width: 0;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+        }
+        .ld-stat-card-header {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--primary-medium, #666);
+            margin-bottom: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .ld-stat-card-body {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            flex: 1;
+        }
+        .ld-stat-metrics-row {
+            display: flex;
+            align-items: baseline;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .ld-stat-metric-item {
+            display: inline-flex;
+            align-items: baseline;
+            gap: 3px;
+        }
+        .ld-stat-number {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--primary, #222);
+            line-height: 1.2;
+        }
+        .ld-stat-unit {
+            font-size: 11px;
+            color: var(--primary-medium, #777);
+        }
+        .ld-stat-ratio-bar {
+            width: 100%;
+            height: 9px;
+            background: var(--primary-low, #e2e8f0);
+            border-radius: 5px;
+            overflow: hidden;
+            display: flex;
+            margin: 5px 0 4px 0;
+            box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.08);
+        }
+        .ld-stat-ratio-green {
+            background: linear-gradient(90deg, #10b981, #059669);
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+        .ld-stat-ratio-red {
+            background: linear-gradient(90deg, #ef4444, #dc2626);
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+        .ld-stat-ratio-labels {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 10.5px;
+            margin-top: 2px;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+        .ld-stat-ratio-good {
+            color: #059669;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .ld-stat-ratio-bad {
+            color: #dc2626;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .ld-stat-neutral-hint {
+            font-size: 10px;
+            color: var(--primary-medium, #888);
+            margin-top: 2px;
+        }
+        .ld-stat-top-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            align-items: center;
+        }
+        .ld-stat-tag-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            font-size: 10.5px;
+            font-weight: 600;
+            padding: 1px 6px;
+            border-radius: 10px;
+            border: 1px solid transparent;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .ld-stat-tag-count {
+            font-size: 9.5px;
+            opacity: 0.85;
+            font-weight: bold;
+        }
+
         @media (max-width: 600px) {
+            .ld-dashboard-bento {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
             .ld-popover-footer {
                 flex-wrap: wrap;
                 gap: 8px;
@@ -2277,6 +2502,9 @@
                 </div>
             </div>
 
+            <!-- 📊 Bento 统计看板 -->
+            <div id="ld-dashboard-container" style="padding: 0 16px;"></div>
+
             <div style="padding: 10px 16px; background: var(--primary-very-low, #f9f9f9); border-bottom: 1px solid var(--primary-low, #eee); display: flex; gap: 8px; align-items: center; justify-content: space-between;">
                 <input type="text" id="ld-search-user" class="ld-input" style="max-width: 240px;" placeholder="🔍 搜索用户名或标签..." />
                 <div>
@@ -2295,11 +2523,89 @@
         document.body.appendChild(modal);
 
         const listContainer = modal.querySelector('#ld-user-list-container');
+        const dashboardContainer = modal.querySelector('#ld-dashboard-container');
         const searchInput = modal.querySelector('#ld-search-user');
         const tokenInput = modal.querySelector('#ld-gist-token');
         const gistIdInput = modal.querySelector('#ld-gist-id');
         const autoSyncCheckbox = modal.querySelector('#ld-gist-autosync');
         const statusText = modal.querySelector('#ld-gist-status-text');
+
+        function renderDashboard() {
+            if (!dashboardContainer) return;
+            const allUsers = storage.getAllUsers();
+            const stats = calculateDashboardStats(allUsers);
+
+            const topTagsHtml = stats.topTags.length > 0
+                ? stats.topTags.map(t => `
+                    <span class="ld-stat-tag-chip" style="color:${escapeHtml(t.color || 'inherit')}; background:${escapeHtml(t.bg || 'var(--primary-very-low, #eee)')}; border-color:${escapeHtml(t.border || 'transparent')}">
+                        ${escapeHtml(t.name)} <span class="ld-stat-tag-count">(${t.count})</span>
+                    </span>
+                `).join('')
+                : `<span style="font-size: 11px; color: var(--primary-medium, #888);">暂无高频标签</span>`;
+
+            const neutralText = stats.neutralCount > 0
+                ? ` | 中立/备注: ${stats.neutralCount} 人`
+                : '';
+
+            dashboardContainer.innerHTML = `
+                <div class="ld-dashboard-wrapper">
+                    <div class="ld-dashboard-bento">
+                        <!-- Card 1: 👥 打标用户总数 & 📜 历史战绩留痕 -->
+                        <div class="ld-stat-card">
+                            <div class="ld-stat-card-header">
+                                <span>👥 标记概况</span>
+                                <span>📊</span>
+                            </div>
+                            <div class="ld-stat-card-body">
+                                <div class="ld-stat-metrics-row">
+                                    <div class="ld-stat-metric-item" title="打标用户总数">
+                                        <span class="ld-stat-unit">👥</span>
+                                        <span class="ld-stat-number">${stats.totalUsers}</span>
+                                        <span class="ld-stat-unit">人</span>
+                                    </div>
+                                    <div class="ld-stat-metric-item" title="历史战绩留痕总数" style="border-left: 1px solid var(--primary-low, #eee); padding-left: 8px;">
+                                        <span class="ld-stat-unit">📜</span>
+                                        <span class="ld-stat-number">${stats.totalRecords}</span>
+                                        <span class="ld-stat-unit">条</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Card 2: ⚖️ 群体特征分布 (健康度比例条) -->
+                        <div class="ld-stat-card">
+                            <div class="ld-stat-card-header">
+                                <span>⚖️ 群体特征分布</span>
+                                <span style="font-size: 10.5px; color: var(--primary-medium, #888);">健康度</span>
+                            </div>
+                            <div class="ld-stat-card-body">
+                                <div class="ld-stat-ratio-bar" title="🌱 有营养: ${stats.goodCount} 人 (${stats.goodRatio}) | 🚨 没营养: ${stats.badCount} 人 (${stats.badRatio})${neutralText}">
+                                    <div class="ld-stat-ratio-green" style="width: ${stats.goodRatio};"></div>
+                                    <div class="ld-stat-ratio-red" style="width: ${stats.badRatio};"></div>
+                                </div>
+                                <div class="ld-stat-ratio-labels">
+                                    <span class="ld-stat-ratio-good">🌱 有营养 ${stats.goodCount} 人 (${stats.goodRatio})</span>
+                                    <span class="ld-stat-ratio-bad">🚨 没营养 ${stats.badCount} 人 (${stats.badRatio})</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Card 3: 🏆 高频常用标签 Top 5 -->
+                        <div class="ld-stat-card">
+                            <div class="ld-stat-card-header">
+                                <span>🏆 高频常用标签 Top 5</span>
+                                <span>🏷️</span>
+                            </div>
+                            <div class="ld-stat-card-body">
+                                <div class="ld-stat-top-tags">
+                                    ${topTagsHtml}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
 
         function updateGistConfigFromUI() {
             const currentConf = GistSync.getConfig();
@@ -2350,6 +2656,7 @@
                 if (res.success) {
                     statusText.innerHTML = `🕒 上次同步: <strong>刚刚</strong> (拉取成功)`;
                     alert(`🎉 成功从云端拉取并合并了 ${res.count} 位用户的标签数据！`);
+                    renderDashboard();
                     renderList(searchInput.value);
                     renderAllTags();
                 } else {
@@ -2394,6 +2701,7 @@
                 item.querySelector('.ld-btn-del-user').addEventListener('click', () => {
                     if (confirm(`确定删除针对 @${u.username} 的所有标签与备注吗？`)) {
                         storage.setUser(u.username, null);
+                        renderDashboard();
                         renderList(searchInput.value);
                         renderAllTags();
                     }
@@ -2403,6 +2711,7 @@
             });
         }
 
+        renderDashboard();
         renderList();
 
         searchInput.addEventListener('input', (e) => renderList(e.target.value));
@@ -2504,7 +2813,8 @@
             normalizeCategories,
             normalizeUsers,
             DEFAULT_CATEGORIES,
-            extractPostContext
+            extractPostContext,
+            calculateDashboardStats
         };
     }
 })();
