@@ -138,6 +138,12 @@
         return /^#[0-9a-f]{3,8}$/i.test(color) ? color : fallback;
     }
 
+    // Imported URLs must use safe protocols (http, https, or relative paths)
+    function sanitizeUrl(value) {
+        const url = normalizeText(value, 2048);
+        return /^(https?:|\/)/i.test(url) ? url : '';
+    }
+
     function getTagKey(tagOrCategory, tagName) {
         if (isPlainObject(tagOrCategory)) {
             return `${tagOrCategory.category || 'unknown'}\u0000${tagOrCategory.name || ''}`;
@@ -260,7 +266,7 @@
 
         const tags = normalizeUserTags(rawUser.tags, categories);
         const note = normalizeText(rawUser.note, 1000);
-        const sourceUrl = normalizeText(rawUser.sourceUrl, 2048);
+        const sourceUrl = sanitizeUrl(rawUser.sourceUrl);
         const sourceTitle = normalizeText(rawUser.sourceTitle, 200);
         const rawUpdatedAt = Number(rawUser.updatedAt);
         const updatedAt = Number.isFinite(rawUpdatedAt) && rawUpdatedAt > 0 ? rawUpdatedAt : 0;
@@ -277,7 +283,7 @@
                 records.push({
                     id,
                     time,
-                    sourceUrl: normalizeText(record.sourceUrl, 2048),
+                    sourceUrl: sanitizeUrl(record.sourceUrl),
                     sourceTitle: normalizeText(record.sourceTitle, 200),
                     quote: normalizeText(record.quote, 200),
                     note: normalizeText(record.note, 1000),
@@ -2834,7 +2840,7 @@
                         tipHtml += `<div style="margin-top:4px;font-size:10px;color:#bbb;">🔗 来源: ${escapeHtml(userData.sourceTitle)}</div>`;
                     }
                     if (userData.updatedAt) {
-                        const dateStr = new Date(userData.updatedAt).toLocaleDateString();
+                        const dateStr = formatDateTime(userData.updatedAt);
                         tipHtml += `<div style="margin-top:2px;font-size:9px;color:#999;">🕒 标记时间: ${escapeHtml(dateStr)}</div>`;
                     }
                     if (currentTooltip && typeof currentTooltip.show === 'function') {
@@ -2889,7 +2895,7 @@
                     tipHtml += `<div style="margin-top:4px;font-size:10px;color:#bbb;">🔗 来源: ${escapeHtml(userData.sourceTitle)}</div>`;
                 }
                 if (userData.updatedAt) {
-                    const dateStr = new Date(userData.updatedAt).toLocaleDateString();
+                    const dateStr = formatDateTime(userData.updatedAt);
                     tipHtml += `<div style="margin-top:2px;font-size:9px;color:#999;">🕒 标记时间: ${escapeHtml(dateStr)}</div>`;
                 }
                 tooltip.show(e, tipHtml);
@@ -3532,6 +3538,7 @@
             normalizeCategories,
             normalizeUsers,
             DEFAULT_CATEGORIES,
+            sanitizeUrl,
             extractPostContext,
             calculateDashboardStats,
             formatDateTime,

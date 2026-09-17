@@ -226,6 +226,32 @@ test('invalid records are filtered out during normalization', () => {
     assert.strictEqual(user.records[0].id, 'valid_rec');
 });
 
+test('sanitizes unsafe URL protocols from sourceUrl in user and records', () => {
+    const rawUser = {
+        username: 'safe_url_user',
+        sourceUrl: 'javascript:alert("hacked")',
+        tags: [{ name: '💡 技术大佬', category: 'good' }],
+        records: [
+            {
+                id: 'rec_unsafe',
+                time: 1000,
+                sourceUrl: 'data:text/html,<script>evil()</script>',
+                quote: 'test quote'
+            },
+            {
+                id: 'rec_safe',
+                time: 2000,
+                sourceUrl: 'https://linux.do/t/topic/123/4',
+                quote: 'safe quote'
+            }
+        ]
+    };
+
+    const user = normalizeUserData('safe_url_user', rawUser, DEFAULT_CATEGORIES);
+    assert.strictEqual(user.records[0].sourceUrl, 'https://linux.do/t/topic/123/4');
+    assert.strictEqual(user.records[1].sourceUrl, '');
+});
+
 console.log('\nSuite 3: Record Merging in mergeUserData');
 
 test('merges non-overlapping records from both existing and incoming without loss', () => {
